@@ -1,0 +1,11 @@
+﻿fastapi
+uvicorn
+python-multipart
+python-dotenv
+yt-dlp
+faster-whisper
+google-genai
+groq
+openai
+supabase
+pydantic
