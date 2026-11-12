@@ -13,3 +13,6 @@ output/
 downloads/
 *.mp4
 *.webm
+
+cookies.txt
+jobs/
