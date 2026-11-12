@@ -9,3 +9,5 @@ groq
 openai
 supabase
 pydantic
+numpy
+opencv-python-headless
