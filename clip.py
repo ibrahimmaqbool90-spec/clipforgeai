@@ -1,4 +1,4 @@
-import json
+﻿import json
 import os
 import re
 import subprocess
@@ -808,7 +808,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         return f"{h}:{m:02}:{s:02}.{cs:02}"
 
     events = []
-    clean_hook = re.sub(r"[^\w\s£$%!?'-]", "", hook_banner).upper()
+    clean_hook = re.sub(r"[^\w\sÂ£$%!?'-]", "", hook_banner).upper()
     events.append(
         "Dialogue: 1,0:00:00.00,0:00:03.50,Hook,,0,0,0,,"
         f"{{\\t(0,120,\\fscx108\\fscy108)\\t(120,240,\\fscx100\\fscy100)}}{clean_hook}"
