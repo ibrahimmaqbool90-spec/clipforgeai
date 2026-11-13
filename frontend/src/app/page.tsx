@@ -58,6 +58,7 @@ interface JobStatus {
 
 interface UserSession {
   access_token: string;
+  refresh_token?: string;
   user: {
     id: string;
     email: string;
@@ -123,27 +124,79 @@ export default function Home() {
     }
   }, []);
 
-const fetchUserLibrary = useCallback(async (token: string) => {
-  setLoadingLibrary(true);
-  try {
-    const res = await fetch(`${API_BASE}/api/my-clips`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setProfile(data.profile);
-      setSavedClips(data.clips || []);
-    }
-  } catch {
-      // Ignore network errors
-    } finally {
-      setLoadingLibrary(false);
-    }
-  }, []);
+  const refreshSupabaseSession = useCallback(
+    async (currentSession: UserSession): Promise<UserSession | null> => {
+      if (!currentSession.refresh_token || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
+        return null;
+      }
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`,
+          {
+            method: "POST",
+            headers: {
+              apikey: SUPABASE_ANON_KEY,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ refresh_token: currentSession.refresh_token }),
+          }
+        );
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data.access_token && data.user) {
+          const updated: UserSession = {
+            access_token: data.access_token,
+            refresh_token: data.refresh_token || currentSession.refresh_token,
+            user: { id: data.user.id, email: data.user.email },
+          };
+          setSession(updated);
+          localStorage.setItem("clipforge_session", JSON.stringify(updated));
+          return updated;
+        }
+      } catch {
+        // Ignore refresh network error
+      }
+      return null;
+    },
+    []
+  );
+
+  const fetchUserLibrary = useCallback(
+    async (activeSession: UserSession) => {
+      setLoadingLibrary(true);
+      try {
+        let res = await fetch(`${API_BASE}/api/my-clips`, {
+          headers: { Authorization: `Bearer ${activeSession.access_token}` },
+        });
+        if (res.status === 401) {
+          const refreshed = await refreshSupabaseSession(activeSession);
+          if (refreshed) {
+            res = await fetch(`${API_BASE}/api/my-clips`, {
+              headers: { Authorization: `Bearer ${refreshed.access_token}` },
+            });
+          } else {
+            setSession(null);
+            localStorage.removeItem("clipforge_session");
+            return;
+          }
+        }
+        if (res.ok) {
+          const data = await res.json();
+          setProfile(data.profile);
+          setSavedClips(data.clips || []);
+        }
+      } catch {
+        // Ignore network errors
+      } finally {
+        setLoadingLibrary(false);
+      }
+    },
+    [refreshSupabaseSession]
+  );
 
   useEffect(() => {
     if (session?.access_token) {
-      fetchUserLibrary(session.access_token);
+      fetchUserLibrary(session);
     } else {
       setProfile(null);
       setSavedClips([]);
@@ -180,8 +233,8 @@ const fetchUserLibrary = useCallback(async (token: string) => {
         setJob(data);
         if (data.status === "completed" || data.status === "failed") {
           clearInterval(interval);
-          if (data.status === "completed" && session?.access_token) {
-            fetchUserLibrary(session.access_token);
+          if (session?.access_token) {
+            fetchUserLibrary(session);
           }
         }
       } catch {
@@ -224,6 +277,7 @@ const fetchUserLibrary = useCallback(async (token: string) => {
       if (data.access_token && data.user) {
         const newSession: UserSession = {
           access_token: data.access_token,
+          refresh_token: data.refresh_token,
           user: { id: data.user.id, email: data.user.email },
         };
         setSession(newSession);
@@ -294,6 +348,14 @@ const fetchUserLibrary = useCallback(async (token: string) => {
     setJobId(null);
 
     try {
+      let activeToken = session?.access_token;
+      if (session) {
+        const refreshed = await refreshSupabaseSession(session);
+        if (refreshed) {
+          activeToken = refreshed.access_token;
+        }
+      }
+
       const formData = new FormData();
       formData.append("num_clips", String(numClips));
       formData.append("dynamic_mode", String(dynamicMode));
@@ -314,8 +376,8 @@ const fetchUserLibrary = useCallback(async (token: string) => {
       }
 
       const headers: Record<string, string> = {};
-      if (session?.access_token) {
-        headers["Authorization"] = `Bearer ${session.access_token}`;
+      if (activeToken) {
+        headers["Authorization"] = `Bearer ${activeToken}`;
       }
 
       const res = await fetch(`${API_BASE}/api/clip`, {
@@ -394,7 +456,7 @@ const fetchUserLibrary = useCallback(async (token: string) => {
                   type="button"
                   onClick={() => {
                     setActiveView("library");
-                    fetchUserLibrary(session.access_token);
+                    fetchUserLibrary(session);
                   }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                     activeView === "library"
@@ -740,7 +802,7 @@ const fetchUserLibrary = useCallback(async (token: string) => {
                   </div>
                 </div>
 
-                {/* Normalized Universal BYOK Drawer (Gemini, Claude, Groq, OpenRouter, OpenAI, DeepSeek, Custom) */}
+                {/* Normalized Universal BYOK Drawer */}
                 <div className="border border-zinc-800/80 rounded-xl bg-zinc-950/50 overflow-hidden">
                   <button
                     type="button"
@@ -974,7 +1036,8 @@ const fetchUserLibrary = useCallback(async (token: string) => {
                               className={
                                 line.includes("Exported") ||
                                 line.includes("ready") ||
-                                line.includes("Backed up")
+                                line.includes("Backed up") ||
+                                line.includes("Refunded")
                                   ? "text-emerald-400"
                                   : line.includes("ffmpeg") ||
                                     line.includes("llm:")
