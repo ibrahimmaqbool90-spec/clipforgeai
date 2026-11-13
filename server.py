@@ -192,6 +192,7 @@ def get_normalized_profile(user_id: str) -> dict:
                     "clips_used_in_window": 0,
                     "window_started_at": now.isoformat(),
                 },
+                extra_headers={"Prefer": "return=minimal"},
             )
         prof["plan"] = plan
         return prof
@@ -207,9 +208,10 @@ def increment_user_clips(user_id: str, new_total: int):
             f"/rest/v1/profiles?id=eq.{user_id}",
             method="PATCH",
             body={"clips_used_in_window": max(0, new_total)},
+            extra_headers={"Prefer": "return=minimal"},
         )
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Supabase clips_used_in_window update failed for {user_id}: {e}")
 
 
 def refund_clips(user_id: str | None, client_ip: str | None, clips_to_refund: int):
@@ -277,6 +279,7 @@ def save_clip_to_cloud(
                 "video_url": public_url,
                 "expires_at": expires_at,
             },
+            extra_headers={"Prefer": "return=minimal"},
         )
         return public_url
     except Exception as e:
@@ -323,7 +326,7 @@ def process_job(
             jobs[job_id]["step"] = "Extracting audio from uploaded file..."
             jobs[job_id]["progress"] = 20
             add_log(job_id, "ffmpeg: Demuxing uploaded MP4 audio stream...")
-            subprocess.run(
+            proc = subprocess.run(
                 [
                     "ffmpeg",
                     "-y",
@@ -338,10 +341,11 @@ def process_job(
                     "1",
                     audio_path,
                 ],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=True,
+                capture_output=True,
+                text=True,
             )
+            if proc.returncode != 0:
+                raise RuntimeError(f"FFmpeg demux failed: {proc.stderr[-300:]}")
             add_log(job_id, "ffmpeg: Audio extraction complete.")
 
         jobs[job_id]["step"] = "Scanning gameplay peaks & transcribing speech..."
@@ -380,7 +384,9 @@ def process_job(
             custom_model=custom_model,
         )
         if not clips:
-            raise RuntimeError("AI Editor could not identify any high-retention moments in this video.")
+            raise RuntimeError(
+                "AI Editor could not identify any high-retention moments in this video."
+            )
 
         add_log(job_id, f"llm: Selected {len(clips)} distinct high-retention clips.")
 
@@ -703,12 +709,14 @@ async def lemonsqueezy_webhook(request: Request):
                 "window_started_at": datetime.now(timezone.utc).isoformat(),
                 "subscription_id": sub_id,
             },
+            extra_headers={"Prefer": "return=minimal"},
         )
     elif user_id and event_name in ("subscription_expired", "subscription_cancelled"):
         _supabase_request(
             f"/rest/v1/profiles?id=eq.{user_id}",
             method="PATCH",
             body={"plan": "free", "clips_used_in_window": 0},
+            extra_headers={"Prefer": "return=minimal"},
         )
 
     return {"ok": True}
