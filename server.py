@@ -1,4 +1,4 @@
-﻿import base64
+import base64
 from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac

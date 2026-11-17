@@ -1,6 +1,6 @@
 import socket
 socket.setdefaulttimeout(15)
-﻿import json
+import json
 import os
 import re
 import subprocess
