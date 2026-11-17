@@ -29,6 +29,7 @@ import {
   HelpCircle,
   Heart,
   Trash2,
+  Pencil,
   FolderPlus,
   Search,
   Clock,
@@ -533,6 +534,31 @@ export default function Home() {
     });
   };
 
+  const [editingClipId, setEditingClipId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [confirmDeleteTarget, setConfirmDeleteTarget] = useState<
+    | { type: "clip"; clip: ClipResult }
+    | { type: "folder"; folderName: string }
+    | null
+  >(null);
+
+  const handleRenameSavedClip = async (clip: ClipResult) => {
+    const clean = renameDraft.trim().slice(0, 80);
+    setEditingClipId(null);
+    if (!clean || clean === clip.title || !session) return;
+    setSavedClips((prev) =>
+      prev.map((c) => (c.id === clip.id ? { ...c, title: clean } : c))
+    );
+    await fetch(`${API_BASE}/api/saved-clips/${clip.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ title: clean }),
+    });
+  };
+
   const handleDeleteSavedClip = async (clip: ClipResult) => {
     if (!session) return;
     setSavedClips((prev) => prev.filter((c) => c.id !== clip.id));
@@ -888,7 +914,7 @@ export default function Home() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDeleteFolder(folder)}
+                        onClick={() => setConfirmDeleteTarget({ type: "folder", folderName: folder })}
                         className="px-1.5 py-1 text-zinc-500 hover:text-red-400 border-l border-zinc-800/80 transition"
                         title={`Delete folder "${folder}"`}
                       >
@@ -933,7 +959,7 @@ export default function Home() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDeleteFolder(selectedFolder)}
+                        onClick={() => setConfirmDeleteTarget({ type: "folder", folderName: selectedFolder })}
                         className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-950/60 hover:bg-red-900/70 border border-red-800/70 text-red-300 font-bold text-xs transition"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -1052,7 +1078,7 @@ export default function Home() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleDeleteSavedClip(clip)}
+                            onClick={() => setConfirmDeleteTarget({ type: "clip", clip })}
                             className="p-1.5 rounded-lg bg-black/75 backdrop-blur border border-zinc-700 text-zinc-300 hover:bg-red-600 hover:border-red-500 hover:text-white transition"
                             title="Delete Saved Clip"
                           >
@@ -1073,9 +1099,54 @@ export default function Home() {
                               </span>
                             )}
                           </div>
-                          <h3 className="font-bold text-sm text-zinc-100 line-clamp-1">
-                            {clip.title}
-                          </h3>
+                          {editingClipId === String(clip.id) ? (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <input
+                                type="text"
+                                autoFocus
+                                value={renameDraft}
+                                onChange={(e) => setRenameDraft(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") handleRenameSavedClip(clip);
+                                  if (e.key === "Escape") setEditingClipId(null);
+                                }}
+                                className="flex-1 min-w-0 px-2 py-1 rounded bg-zinc-950 border border-amber-400 text-xs font-bold text-zinc-100 focus:outline-none"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRenameSavedClip(clip)}
+                                className="p-1 rounded bg-amber-400 text-zinc-950 hover:bg-amber-300"
+                                title="Save Name"
+                              >
+                                <Check className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingClipId(null)}
+                                className="p-1 rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                                title="Cancel"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between gap-1.5 group">
+                              <h3 className="font-bold text-sm text-zinc-100 line-clamp-1">
+                                {clip.title}
+                              </h3>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingClipId(String(clip.id));
+                                  setRenameDraft(clip.title);
+                                }}
+                                className="p-1 rounded text-zinc-500 hover:text-amber-400 hover:bg-zinc-800 shrink-0 transition"
+                                title="Rename Clip"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
                           <p className="text-xs text-zinc-400 mt-1 line-clamp-2">
                             {clip.story_arc}
                           </p>
@@ -2474,6 +2545,55 @@ export default function Home() {
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteTarget && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center text-red-400 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-black text-base text-zinc-100">
+                  {confirmDeleteTarget.type === "folder"
+                    ? "Delete Folder?"
+                    : "Delete Saved Clip?"}
+                </h3>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  {confirmDeleteTarget.type === "folder"
+                    ? `Are you sure you want to delete the folder "${confirmDeleteTarget.folderName}"? Your clips inside will stay in All Clips.`
+                    : `Are you sure you want to permanently delete "${confirmDeleteTarget.clip.title}"? This cannot be undone.`}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteTarget(null)}
+                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const target = confirmDeleteTarget;
+                  setConfirmDeleteTarget(null);
+                  if (target.type === "folder") {
+                    await handleDeleteFolder(target.folderName);
+                  } else {
+                    await handleDeleteSavedClip(target.clip);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-xs transition"
+              >
+                Yes, Delete
+              </button>
             </div>
           </div>
         </div>

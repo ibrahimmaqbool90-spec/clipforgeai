@@ -892,6 +892,10 @@ async def update_saved_clip(
         updates["is_favorite"] = bool(body["is_favorite"])
     if "folder_name" in body:
         updates["folder_name"] = str(body["folder_name"] or "").strip()[:40]
+    if "title" in body:
+        clean_title = str(body["title"] or "").strip()[:80]
+        if clean_title:
+            updates["title"] = clean_title
     if not updates:
         return {"ok": True}
 
