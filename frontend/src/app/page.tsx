@@ -1606,9 +1606,26 @@ export default function Home() {
                           <span className="text-xs font-mono text-zinc-500">
                             {clip.duration}s
                           </span>
-                          <a
-                            href={resolveMediaUrl(clip.video_url)}
-                            download={`${clip.title}.mp4`}
+                          <div className="flex items-center gap-1.5">
+                            {clip.saved_to_cloud || manuallySavedIds[String(clip.id)] ? (
+                              <span className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                <Check className="w-3 h-3" />
+                                Saved
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={savingClipId === String(clip.id)}
+                                onClick={() => handleSaveClip(clip)}
+                                className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-400 transition"
+                              >
+                                <FolderHeart className="w-3 h-3" />
+                                {savingClipId === String(clip.id) ? "Saving..." : "Save"}
+                              </button>
+                            )}
+                            <a
+                              href={resolveMediaUrl(clip.video_url)}
+                              download={`${clip.title}.mp4`}
                             target="_blank"
                             rel="noreferrer"
                             className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-amber-400 hover:text-zinc-950 transition"
@@ -1616,6 +1633,7 @@ export default function Home() {
                             <Download className="w-3.5 h-3.5" />
                             Download
                           </a>
+                          </div>
                         </div>
                       </div>
                     </div>
