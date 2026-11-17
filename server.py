@@ -304,6 +304,51 @@ def save_clip_to_cloud(
         return None
 
 
+
+
+def build_social_metadata(clip_obj, transcript_segments: list) -> dict:
+    """Builds ready-to-post YouTube Shorts / Reels / TikTok title, description, hashtags, and pinned comment."""
+    c_start, c_end, _ = clip_bounds(clip_obj)
+    spoken_lines = [
+        s.get("text", "").strip()
+        for s in transcript_segments
+        if s.get("end", 0) >= c_start and s.get("start", 0) <= c_end and s.get("text", "").strip()
+    ]
+    spoken_excerpt = " ".join(spoken_lines)[:220].strip()
+
+    clean_title = re.sub(r"[_-]+", " ", str(clip_obj.title)).strip().title()
+    hook = str(clip_obj.hook_banner).strip().upper()
+    arc = str(clip_obj.story_arc).strip()
+
+    post_title = f"{clean_title} ({hook})" if hook and hook.lower() not in clean_title.lower() else clean_title
+    post_title = post_title[:70]
+
+    words = re.findall(r"[A-Za-z]{4,}", f"{clean_title} {arc}")
+    stop = {"this", "that", "with", "from", "have", "what", "when", "your", "they", "them", "just", "like", "into", "highlight", "segment", "moment"}
+    kw_tags = []
+    for w in words:
+        lw = w.lower()
+        if lw not in stop and f"#{lw}" not in kw_tags:
+            kw_tags.append(f"#{lw}")
+        if len(kw_tags) >= 5:
+            break
+
+    hashtags = " ".join(["#shorts", "#reels", "#fyp", "#viral"] + kw_tags)
+    desc_body = arc if arc else spoken_excerpt
+    if spoken_excerpt and spoken_excerpt.lower() not in desc_body.lower():
+        desc_body = f"{desc_body}\n\n'{spoken_excerpt}...'"
+
+    description = f"{hook} ??\n{desc_body}\n\nFollow for daily clips!\n\n{hashtags}"
+    pinned_comment = f"Wait for the ending ?? Would you have pulled this off? Drop a ?? if you watched till the end!"
+
+    return {
+        "post_title": post_title,
+        "description": description,
+        "hashtags": hashtags,
+        "pinned_comment": pinned_comment,
+    }
+
+
 def cleanup_temp_files(*paths):
     for p in paths:
         if p and os.path.exists(p):
@@ -358,6 +403,7 @@ def render_selected_clips(
                 "end": c_end,
                 "duration": total_dur,
                 "video_url": f"/files/{job_id}/shorts/{filename}",
+                "social_meta": build_social_metadata(c, data.get("segments", [])),
             }
 
             cloud_url = save_clip_to_cloud(
