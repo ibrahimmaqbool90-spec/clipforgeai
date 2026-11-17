@@ -461,6 +461,34 @@ export default function Home() {
     ])
   );
 
+  const [showFolderPicker, setShowFolderPicker] = useState(false);
+
+  const handleDeleteFolder = async (folderName: string) => {
+    const updated = customFolders.filter((f) => f !== folderName);
+    setCustomFolders(updated);
+    if (session?.user?.id) {
+      localStorage.setItem(
+        `peakslicer_folders_${session.user.id}`,
+        JSON.stringify(updated)
+      );
+    }
+    if (selectedFolder === folderName) {
+      setSelectedFolder("ALL");
+      setShowFolderPicker(false);
+    }
+    setSavedClips((prev) =>
+      prev.map((c) =>
+        (c.folder_name || "") === folderName ? { ...c, folder_name: "" } : c
+      )
+    );
+    if (session?.access_token) {
+      await fetch(`${API_BASE}/api/folders/${encodeURIComponent(folderName)}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+    }
+  };
+
   const handleCreateFolder = (e: React.FormEvent) => {
     e.preventDefault();
     const name = newFolderInput.trim();
@@ -839,18 +867,34 @@ export default function Home() {
                     All Folders
                   </button>
                   {allFolders.map((folder) => (
-                    <button
+                    <div
                       key={folder}
-                      type="button"
-                      onClick={() => setSelectedFolder(folder)}
-                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                      className={`inline-flex items-center rounded-lg border text-xs font-semibold transition ${
                         selectedFolder === folder
-                          ? "bg-zinc-800 text-amber-400 border border-amber-400/40"
-                          : "bg-zinc-950 text-zinc-400 border border-zinc-800 hover:text-zinc-200"
+                          ? "bg-zinc-800 text-amber-400 border-amber-400/40"
+                          : "bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-200"
                       }`}
                     >
-                      ?? {folder}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedFolder(folder);
+                          setShowFolderPicker(false);
+                        }}
+                        className="flex items-center gap-1.5 px-2.5 py-1"
+                      >
+                        <FolderHeart className="w-3 h-3 text-amber-400" />
+                        <span>{folder}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteFolder(folder)}
+                        className="px-1.5 py-1 text-zinc-500 hover:text-red-400 border-l border-zinc-800/80 transition"
+                        title={`Delete folder "${folder}"`}
+                      >
+                        ?
+                      </button>
+                    </div>
                   ))}
                 </div>
 
@@ -871,6 +915,70 @@ export default function Home() {
                   </button>
                 </form>
               </div>
+
+              {selectedFolder !== "ALL" && (
+                <div className="pt-3 border-t border-zinc-800/80 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs text-zinc-300 font-semibold">
+                      Viewing folder: <strong className="text-amber-400">{selectedFolder}</strong>
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowFolderPicker((v) => !v)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 font-black text-xs transition"
+                      >
+                        <FolderPlus className="w-3.5 h-3.5" />
+                        {showFolderPicker ? "Done Adding" : `+ Add Clips to ${selectedFolder}`}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteFolder(selectedFolder)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-950/60 hover:bg-red-900/70 border border-red-800/70 text-red-300 font-bold text-xs transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete Folder
+                      </button>
+                    </div>
+                  </div>
+
+                  {showFolderPicker && (
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 space-y-2">
+                      <p className="text-[11px] text-zinc-400">
+                        Click any clip below to add or remove it from <strong className="text-amber-400">{selectedFolder}</strong>:
+                      </p>
+                      {savedClips.length === 0 ? (
+                        <p className="text-xs text-zinc-500">No saved clips available yet.</p>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                          {savedClips.map((c) => {
+                            const inThisFolder = (c.folder_name || "") === selectedFolder;
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() =>
+                                  handleAssignFolder(c, inThisFolder ? "" : selectedFolder)
+                                }
+                                className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-left text-xs transition ${
+                                  inThisFolder
+                                    ? "bg-amber-400/15 border-amber-400/50 text-amber-300 font-bold"
+                                    : "bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-zinc-700"
+                                }`}
+                              >
+                                <span className="truncate">{c.title}</span>
+                                <span className="shrink-0 text-[10px] uppercase font-black">
+                                  {inThisFolder ? "Added ?" : "+ Add"}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {loadingLibrary ? (
@@ -983,7 +1091,7 @@ export default function Home() {
                             <option value="">No Folder (Unorganized)</option>
                             {allFolders.map((f) => (
                               <option key={f} value={f}>
-                                ?? {f}
+                                {f}
                               </option>
                             ))}
                           </select>

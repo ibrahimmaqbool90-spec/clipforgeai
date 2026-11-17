@@ -938,6 +938,25 @@ def delete_saved_clip(
     return {"ok": True}
 
 
+@app.delete("/api/folders/{folder_name}")
+def delete_user_folder(
+    folder_name: str,
+    authorization: str | None = Header(default=None),
+):
+    user = verify_supabase_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required.")
+    clean_name = urllib.parse.unquote(folder_name).strip()
+    if clean_name:
+        _supabase_request(
+            f"/rest/v1/saved_clips?user_id=eq.{user['id']}&folder_name=eq.{urllib.parse.quote(clean_name)}",
+            method="PATCH",
+            body={"folder_name": ""},
+            extra_headers={"Prefer": "return=minimal"},
+        )
+    return {"ok": True}
+
+
 @app.get("/api/my-clips")
 def get_user_saved_clips(authorization: str | None = Header(default=None)):
     user = verify_supabase_user(authorization)
