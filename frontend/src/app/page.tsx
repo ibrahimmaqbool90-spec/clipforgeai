@@ -492,7 +492,7 @@ export default function Home() {
                 <Scissors className="w-5 h-5" />
               </div>
               <span className="font-extrabold text-lg tracking-tight">
-                ClipForge <span className="text-amber-400">AI</span>
+                PeakSlicer <span className="text-amber-400">AI</span>
               </span>
             </button>
 
@@ -1491,7 +1491,7 @@ export default function Home() {
                 <div>
                   <h2 className="text-xl sm:text-2xl font-black flex items-center gap-2.5">
                     <BookOpen className="w-6 h-6 text-amber-400" />
-                    ClipForge AI User Manual
+                    PeakSlicer AI User Manual
                   </h2>
                   <p className="text-xs sm:text-sm text-zinc-400 mt-1">
                     Everything you need to upload MP4 recordings, locate your
@@ -1669,7 +1669,7 @@ export default function Home() {
                       Export your timeline using{" "}
                       <strong>Format: MP4 (H.264)</strong> at{" "}
                       <strong>720p or 1080p</strong>, then upload that exported
-                      file directly into ClipForge AI to auto-generate multiple
+                      file directly into PeakSlicer AI to auto-generate multiple
                       captioned Shorts.
                     </p>
                   </div>
@@ -1785,7 +1785,7 @@ export default function Home() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-black tracking-tight">
-                  Choose Your ClipForge AI Plan
+                  Choose Your PeakSlicer AI Plan
                 </h2>
                 <p className="text-xs text-zinc-400 mt-1">
                   Bring your own AI API key on every tier and scale your MP4
@@ -1962,7 +1962,7 @@ export default function Home() {
                 <User className="w-5 h-5 text-amber-400" />
                 <h2 className="font-black text-lg">
                   {authMode === "login"
-                    ? "Sign In to ClipForge AI"
+                    ? "Sign In to PeakSlicer AI"
                     : "Create Your Free Account"}
                 </h2>
               </div>

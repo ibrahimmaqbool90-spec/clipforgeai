@@ -32,7 +32,7 @@ if os.path.exists(".env"):
                 _k, _v = _line.strip().split("=", 1)
                 os.environ.setdefault(_k.strip(), _v.strip())
 
-app = FastAPI(title="ClipForge AI API")
+app = FastAPI(title="PeakSlicer AI API")
 
 app.add_middleware(
     CORSMiddleware,
