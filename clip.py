@@ -471,7 +471,7 @@ def _call_anthropic_claude_json(api_key, model_name, prompt, dynamic_mode=True):
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=60) as resp:
+    with urllib.request.urlopen(req, timeout=25) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
     raw_text = payload["content"][0]["text"].strip()
     json_match = re.search(r"\{.*\}", raw_text, re.DOTALL)
