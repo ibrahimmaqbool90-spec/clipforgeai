@@ -51,7 +51,7 @@ interface ClipResult {
 
 interface JobStatus {
   job_id: string;
-  status: "queued" | "processing" | "completed" | "failed";
+  status: "queued" | "processing" | "needs_confirmation" | "completed" | "failed" | "cancelled";
   step: string;
   progress: number;
   logs?: string[];
@@ -237,7 +237,7 @@ export default function Home() {
         if (!res.ok) return;
         const data: JobStatus = await res.json();
         setJob(data);
-        if (data.status === "completed" || data.status === "failed") {
+        if (data.status === "completed" || data.status === "failed" || data.status === "cancelled") {
           clearInterval(interval);
           if (session?.access_token) {
             fetchUserLibrary(session);
@@ -425,10 +425,31 @@ export default function Home() {
     }
   };
 
+  const [confirming, setConfirming] = useState(false);
+
+  const handleConfirmChoice = async (proceed: boolean) => {
+    if (!jobId) return;
+    setConfirming(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/confirm/${jobId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proceed }),
+      });
+      if (res.ok && session?.access_token) {
+        fetchUserLibrary(session);
+      }
+    } catch {
+      // Polling will pick up status change
+    } finally {
+      setConfirming(false);
+    }
+  };
+
   const resolveMediaUrl = (rawUrl: string) =>
     rawUrl.startsWith("http") ? rawUrl : `${API_BASE}${rawUrl}`;
 
-  const isWorking = job?.status === "queued" || job?.status === "processing";
+  const isWorking = job?.status === "queued" || job?.status === "processing" || job?.status === "needs_confirmation";
   const hasCustomKey = Boolean(
     userApiKey.trim() || (userProvider === "custom" && customBaseUrl.trim())
   );
@@ -1100,7 +1121,33 @@ export default function Home() {
                       style={{ width: `${job.progress}%` }}
                     />
                   </div>
-                  {job.error && (
+                                    {job.status === "needs_confirmation" && (
+                    <div className="mt-4 p-4 rounded-xl bg-amber-950/40 border border-amber-500/50 space-y-3">
+                      <p className="text-sm text-amber-200 font-medium">
+                        {job.error ||
+                          "AI could not detect standout viral peaks (0 credits charged). Do you wish to continue with auto-selected highlight slices anyway?"}
+                      </p>
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          disabled={confirming}
+                          onClick={() => handleConfirmChoice(true)}
+                          className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-zinc-950 font-black text-xs transition"
+                        >
+                          {confirming ? "Starting..." : "Yes, Continue & Render"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={confirming}
+                          onClick={() => handleConfirmChoice(false)}
+                          className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200 font-bold text-xs transition"
+                        >
+                          No, Stop (0 Credits Charged)
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {job.error && job.status !== "needs_confirmation" && (
                     <p className="mt-3 text-sm text-red-400">{job.error}</p>
                   )}
 

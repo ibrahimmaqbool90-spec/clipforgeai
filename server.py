@@ -1,4 +1,4 @@
-import base64
+﻿import base64
 from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
@@ -14,6 +14,7 @@ import uuid
 from clip import (
     analyze_audio_and_transcribe,
     build_capcut_ass,
+    build_fallback_clips,
     clip_bounds,
     download_and_extract,
     pick_viral_clips,
@@ -22,8 +23,8 @@ from clip import (
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
-# Load local .env file automatically if present
 if os.path.exists(".env"):
     with open(".env", "r", encoding="utf-8") as _ef:
         for _line in _ef:
@@ -35,7 +36,7 @@ app = FastAPI(title="ClipForge AI API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Lock to your Vercel/Next.js domain in production
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -44,7 +45,6 @@ JOBS_DIR = "jobs"
 os.makedirs(JOBS_DIR, exist_ok=True)
 app.mount("/files", StaticFiles(directory=JOBS_DIR), name="files")
 
-# Write cookies.txt from Railway environment variable (Base64 preferred, plain text fallback)
 if os.environ.get("YOUTUBE_COOKIES_B64"):
     try:
         decoded_cookies = base64.b64decode(os.environ["YOUTUBE_COOKIES_B64"].strip())
@@ -56,15 +56,11 @@ elif os.environ.get("YT_COOKIES_TXT") and not os.path.exists("cookies.txt"):
     with open("cookies.txt", "w", encoding="utf-8") as f:
         f.write(os.environ["YT_COOKIES_TXT"])
 
-# Supabase & Lemon Squeezy SaaS configuration
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 LEMONSQUEEZY_WEBHOOK_SECRET = os.environ.get("LEMONSQUEEZY_WEBHOOK_SECRET", "")
-LEMONSQUEEZY_PRO_MAX_VARIANT_ID = os.environ.get(
-    "LEMONSQUEEZY_PRO_MAX_VARIANT_ID", ""
-)
+LEMONSQUEEZY_PRO_MAX_VARIANT_ID = os.environ.get("LEMONSQUEEZY_PRO_MAX_VARIANT_ID", "")
 
-# 3-Tier Plan Configuration (Applies regardless of BYOK)
 PLAN_LIMITS = {
     "free": {
         "label": "Free",
@@ -82,28 +78,30 @@ PLAN_LIMITS = {
     },
     "pro_max": {
         "label": "Pro Max ($50/mo)",
-        "max_clips_window": 100,  # Fair-use daily safeguard for "Unlimited"
+        "max_clips_window": 100,
         "window_hours": 24,
         "max_per_video": 10,
-        "backup_days": None,  # Permanent cloud vault
+        "backup_days": None,
     },
 }
 
-# Guest IP rolling usage tracker: ip -> (window_start_utc, clips_used)
 guest_usage: dict[str, tuple[datetime, int]] = {}
 quota_lock = threading.Lock()
 
 job_queue = queue.Queue()
 jobs = {}
+pending_confirmations = {}
+
+
+class ConfirmRequest(BaseModel):
+    proceed: bool
 
 
 def add_log(job_id: str, message: str):
     if job_id not in jobs:
         return
     ts = datetime.now().strftime("%H:%M:%S")
-    safe_msg = re.sub(
-        r"[A-Za-z]:\\[^\s]+|/tmp/[^\s]+|jobs/[a-f0-9]+/", "", message
-    )
+    safe_msg = re.sub(r"[A-Za-z]:\\[^\s]+|/tmp/[^\s]+|jobs/[a-f0-9]+/", "", message)
     jobs[job_id]["logs"].append(f"[{ts}] {safe_msg}")
     if len(jobs[job_id]["logs"]) > 60:
         jobs[job_id]["logs"] = jobs[job_id]["logs"][-60:]
@@ -125,9 +123,7 @@ def _supabase_request(
     }
     if extra_headers:
         headers.update(extra_headers)
-    data = (
-        json.dumps(body).encode("utf-8") if isinstance(body, dict) else body
-    )
+    data = json.dumps(body).encode("utf-8") if isinstance(body, dict) else body
     req = urllib.request.Request(
         f"{SUPABASE_URL}{path}", data=data, headers=headers, method=method
     )
@@ -157,7 +153,6 @@ def verify_supabase_user(auth_header: str | None) -> dict | None:
 
 
 def get_normalized_profile(user_id: str) -> dict:
-    """Returns profile with rolling window reset if window_hours has elapsed."""
     now = datetime.now(timezone.utc)
     default_prof = {
         "id": user_id,
@@ -214,8 +209,33 @@ def increment_user_clips(user_id: str, new_total: int):
         print(f"Supabase clips_used_in_window update failed for {user_id}: {e}")
 
 
+def charge_clips(user_id: str | None, client_ip: str | None, clips_to_charge: int) -> bool:
+    """Re-deducts clips when user confirms continuing after 0 AI peaks."""
+    if clips_to_charge <= 0:
+        return True
+    with quota_lock:
+        if user_id:
+            prof = get_normalized_profile(user_id)
+            cfg = PLAN_LIMITS[prof["plan"]]
+            used = int(prof.get("clips_used_in_window") or 0)
+            if cfg["max_clips_window"] - used < clips_to_charge:
+                return False
+            increment_user_clips(user_id, used + clips_to_charge)
+            return True
+        elif client_ip:
+            cfg = PLAN_LIMITS["free"]
+            now = datetime.now(timezone.utc)
+            win_start, used = guest_usage.get(client_ip, (now, 0))
+            if now - win_start >= timedelta(hours=cfg["window_hours"]):
+                win_start, used = now, 0
+            if cfg["max_clips_window"] - used < clips_to_charge:
+                return False
+            guest_usage[client_ip] = (win_start, used + clips_to_charge)
+            return True
+    return True
+
+
 def refund_clips(user_id: str | None, client_ip: str | None, clips_to_refund: int):
-    """Restores deducted clip quota for either a signed-in Supabase user or a guest IP."""
     if clips_to_refund <= 0:
         return
     with quota_lock:
@@ -240,7 +260,6 @@ def save_clip_to_cloud(
     filename: str,
     clip_meta: dict,
 ) -> str | None:
-    """Uploads MP4 to Supabase Storage bucket 'shorts' and sets expires_at based on plan."""
     if not user_id or not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return None
     try:
@@ -255,9 +274,7 @@ def save_clip_to_cloud(
             content_type="video/mp4",
             extra_headers={"x-upsert": "true"},
         )
-        public_url = (
-            f"{SUPABASE_URL}/storage/v1/object/public/shorts/{storage_path}"
-        )
+        public_url = f"{SUPABASE_URL}/storage/v1/object/public/shorts/{storage_path}"
 
         backup_days = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])["backup_days"]
         expires_at = (
@@ -287,6 +304,108 @@ def save_clip_to_cloud(
         return None
 
 
+def cleanup_temp_files(*paths):
+    for p in paths:
+        if p and os.path.exists(p):
+            try:
+                os.remove(p)
+            except Exception:
+                pass
+
+
+def render_selected_clips(
+    job_id: str,
+    work_dir: str,
+    out_dir: str,
+    video_path: str,
+    audio_path: str,
+    data: dict,
+    clips: list,
+    num_clips: int,
+    user_id: str | None,
+    user_plan: str,
+    client_ip: str | None,
+):
+    try:
+        results = []
+        for idx, c in enumerate(clips, 1):
+            c_start, c_end, total_dur = clip_bounds(c)
+            jobs[job_id]["step"] = f"Rendering Short {idx}/{len(clips)}: {c.hook_banner}"
+            jobs[job_id]["progress"] = 65 + int((idx / max(1, len(clips))) * 30)
+            add_log(
+                job_id,
+                f"ffmpeg [{idx}/{len(clips)}]: Stitching {len(c.segments)} cut(s)"
+                f" ({total_dur}s) + burning ASS captions -> {c.hook_banner}",
+            )
+
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", c.title)[:30]
+            ass_file = os.path.join(work_dir, f"temp_{idx}.ass")
+            filename = f"{idx}_{safe_name}.mp4"
+            out_file = os.path.join(out_dir, filename)
+
+            build_capcut_ass(data["segments"], c.segments, c.hook_banner, ass_file)
+            render_viral_short(video_path, c.segments, ass_file, out_file)
+            if os.path.exists(ass_file):
+                os.remove(ass_file)
+
+            clip_record = {
+                "id": idx,
+                "hook_banner": c.hook_banner,
+                "title": c.title,
+                "story_arc": c.story_arc,
+                "cuts": len(c.segments),
+                "start": c_start,
+                "end": c_end,
+                "duration": total_dur,
+                "video_url": f"/files/{job_id}/shorts/{filename}",
+            }
+
+            cloud_url = save_clip_to_cloud(
+                user_id, user_plan, job_id, out_file, filename, clip_record
+            )
+            if cloud_url:
+                clip_record["video_url"] = cloud_url
+                clip_record["saved_to_cloud"] = True
+                retention = (
+                    "permanently"
+                    if PLAN_LIMITS[user_plan]["backup_days"] is None
+                    else f"for {PLAN_LIMITS[user_plan]['backup_days']} days"
+                )
+                add_log(
+                    job_id,
+                    f"cloud [{idx}/{len(clips)}]: Backed up {retention} in user library.",
+                )
+            else:
+                add_log(
+                    job_id,
+                    f"ffmpeg [{idx}/{len(clips)}]: Exported 540x960 H.264 MP4.",
+                )
+
+            results.append(clip_record)
+
+        if len(results) < num_clips:
+            unused = num_clips - len(results)
+            refund_clips(user_id, client_ip, unused)
+            add_log(job_id, f"quota: Refunded {unused} unused clip credit(s).")
+
+        jobs[job_id]["status"] = "completed"
+        jobs[job_id]["step"] = "Done!"
+        jobs[job_id]["progress"] = 100
+        jobs[job_id]["clips"] = results
+        add_log(job_id, "pipeline: All Shorts rendered and ready for download.")
+
+    except Exception as e:
+        refund_clips(user_id, client_ip, num_clips)
+        clean_err = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
+        clean_err = f"{clean_err} (Clip quota automatically refunded)"
+        jobs[job_id]["status"] = "failed"
+        jobs[job_id]["error"] = clean_err
+        add_log(job_id, f"quota: Automatically refunded {num_clips} clip(s).")
+        add_log(job_id, f"error: {clean_err}")
+    finally:
+        cleanup_temp_files(video_path, audio_path)
+
+
 def process_job(
     job_id: str,
     url: str | None,
@@ -309,12 +428,13 @@ def process_job(
     audio_path = os.path.join(work_dir, "audio.wav")
     meta_path = os.path.join(work_dir, "metadata.json")
     transcript_path = os.path.join(work_dir, "transcript_data.json")
+    paused_for_confirmation = False
 
     try:
         if url:
             jobs[job_id]["step"] = "Downloading video from URL..."
             jobs[job_id]["progress"] = 15
-            add_log(job_id, "yt-dlp: Resolving 1080p H.264 stream & metadata...")
+            add_log(job_id, "yt-dlp: Resolving H.264 stream & metadata...")
             download_and_extract(
                 url,
                 video_path=video_path,
@@ -383,87 +503,56 @@ def process_job(
             custom_base_url=custom_base_url,
             custom_model=custom_model,
         )
+
         if not clips:
-            raise RuntimeError(
-                "AI Editor could not identify any high-retention moments in this video."
+            # Refund credits immediately and ask the user whether to continue with Option 2
+            refund_clips(user_id, client_ip, num_clips)
+            paused_for_confirmation = True
+            pending_confirmations[job_id] = {
+                "work_dir": work_dir,
+                "out_dir": out_dir,
+                "video_path": video_path,
+                "audio_path": audio_path,
+                "data": data,
+                "num_clips": num_clips,
+                "user_id": user_id,
+                "user_plan": user_plan,
+                "client_ip": client_ip,
+            }
+            jobs[job_id]["status"] = "needs_confirmation"
+            jobs[job_id]["step"] = "AI found 0 viral peaks — awaiting your confirmation..."
+            jobs[job_id]["error"] = (
+                "AI Editor could not detect standout viral peaks in this video "
+                "(0 credits charged). Do you wish to continue with auto-selected "
+                "highlight slices anyway?"
             )
-
-        add_log(job_id, f"llm: Selected {len(clips)} distinct high-retention clips.")
-
-        results = []
-        for idx, c in enumerate(clips, 1):
-            c_start, c_end, total_dur = clip_bounds(c)
-            jobs[job_id][
-                "step"
-            ] = f"Rendering Short {idx}/{len(clips)}: {c.hook_banner}"
-            jobs[job_id]["progress"] = 65 + int((idx / max(1, len(clips))) * 30)
             add_log(
                 job_id,
-                f"ffmpeg [{idx}/{len(clips)}]: Stitching {len(c.segments)} cut(s)"
-                f" ({total_dur}s) + burning ASS captions -> {c.hook_banner}",
+                f"quota: Refunded {num_clips} clip(s) while awaiting user confirmation.",
             )
-
-            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", c.title)[:30]
-            ass_file = os.path.join(work_dir, f"temp_{idx}.ass")
-            filename = f"{idx}_{safe_name}.mp4"
-            out_file = os.path.join(out_dir, filename)
-
-            build_capcut_ass(data["segments"], c.segments, c.hook_banner, ass_file)
-            render_viral_short(video_path, c.segments, ass_file, out_file)
-            if os.path.exists(ass_file):
-                os.remove(ass_file)
-
-            clip_record = {
-                "id": idx,
-                "hook_banner": c.hook_banner,
-                "title": c.title,
-                "story_arc": c.story_arc,
-                "cuts": len(c.segments),
-                "start": c_start,
-                "end": c_end,
-                "duration": total_dur,
-                "video_url": f"/files/{job_id}/shorts/{filename}",
-            }
-
-            cloud_url = save_clip_to_cloud(
-                user_id, user_plan, job_id, out_file, filename, clip_record
+            add_log(
+                job_id,
+                "prompt: Waiting for user to choose Continue (Option 2) or Cancel.",
             )
-            if cloud_url:
-                clip_record["video_url"] = cloud_url
-                clip_record["saved_to_cloud"] = True
-                retention = (
-                    "permanently"
-                    if PLAN_LIMITS[user_plan]["backup_days"] is None
-                    else f"for {PLAN_LIMITS[user_plan]['backup_days']} days"
-                )
-                add_log(
-                    job_id,
-                    f"cloud [{idx}/{len(clips)}]: Backed up {retention} in user library.",
-                )
-            else:
-                add_log(
-                    job_id,
-                    f"ffmpeg [{idx}/{len(clips)}]: Exported 1080x1920 H.264 MP4.",
-                )
+            return
 
-            results.append(clip_record)
-
-        # Refund unused quota if fewer clips were generated than initially reserved
-        if len(results) < num_clips:
-            unused = num_clips - len(results)
-            refund_clips(user_id, client_ip, unused)
-            add_log(job_id, f"quota: Refunded {unused} unused clip credit(s).")
-
-        jobs[job_id]["status"] = "completed"
-        jobs[job_id]["step"] = "Done!"
-        jobs[job_id]["progress"] = 100
-        jobs[job_id]["clips"] = results
-        add_log(job_id, "pipeline: All Shorts rendered and ready for download.")
+        add_log(job_id, f"llm: Selected {len(clips)} distinct high-retention clips.")
+        render_selected_clips(
+            job_id=job_id,
+            work_dir=work_dir,
+            out_dir=out_dir,
+            video_path=video_path,
+            audio_path=audio_path,
+            data=data,
+            clips=clips,
+            num_clips=num_clips,
+            user_id=user_id,
+            user_plan=user_plan,
+            client_ip=client_ip,
+        )
 
     except Exception as e:
-        # Full automatic refund so failed jobs never cost the user any quota
         refund_clips(user_id, client_ip, num_clips)
-
         clean_err = re.sub(r"\x1b\[[0-9;]*m", "", str(e))
         if "Sign in to confirm" in clean_err or "bot" in clean_err.lower():
             clean_err = (
@@ -476,9 +565,8 @@ def process_job(
         add_log(job_id, f"quota: Automatically refunded {num_clips} clip(s).")
         add_log(job_id, f"error: {clean_err}")
     finally:
-        for heavy_file in [video_path, audio_path]:
-            if heavy_file and os.path.exists(heavy_file):
-                os.remove(heavy_file)
+        if not paused_for_confirmation:
+            cleanup_temp_files(video_path, audio_path)
 
 
 def worker_loop():
@@ -518,6 +606,66 @@ def worker_loop():
 threading.Thread(target=worker_loop, daemon=True).start()
 
 
+@app.post("/api/confirm/{job_id}")
+def confirm_fallback_generation(job_id: str, body: ConfirmRequest):
+    if job_id not in jobs or job_id not in pending_confirmations:
+        raise HTTPException(
+            status_code=404, detail="Job not found or already resolved."
+        )
+
+    ctx = pending_confirmations.pop(job_id)
+
+    if not body.proceed:
+        cleanup_temp_files(ctx["video_path"], ctx["audio_path"])
+        jobs[job_id]["status"] = "cancelled"
+        jobs[job_id]["step"] = "Stopped — 0 credits charged."
+        jobs[job_id]["error"] = None
+        add_log(job_id, "cancelled: User chose No — stopped with 0 credits charged.")
+        return {"status": "cancelled"}
+
+    fallback_clips = build_fallback_clips(ctx["data"], num_clips=ctx["num_clips"])
+    if not fallback_clips:
+        cleanup_temp_files(ctx["video_path"], ctx["audio_path"])
+        jobs[job_id]["status"] = "failed"
+        jobs[job_id]["error"] = "Video is too short to generate highlight slices (0 credits charged)."
+        return {"status": "failed"}
+
+    clips_to_charge = len(fallback_clips)
+    if not charge_clips(ctx["user_id"], ctx["client_ip"], clips_to_charge):
+        cleanup_temp_files(ctx["video_path"], ctx["audio_path"])
+        jobs[job_id]["status"] = "failed"
+        jobs[job_id]["error"] = "Insufficient clip credits remaining to continue."
+        raise HTTPException(status_code=402, detail="Insufficient clip credits remaining.")
+
+    jobs[job_id]["status"] = "processing"
+    jobs[job_id]["error"] = None
+    jobs[job_id]["step"] = "Continuing with Option 2: Auto-selected highlight slices..."
+    add_log(
+        job_id,
+        f"confirm: User chose Yes — charged {clips_to_charge} clip(s) and rendering {clips_to_charge} highlight slice(s).",
+    )
+
+    threading.Thread(
+        target=render_selected_clips,
+        kwargs={
+            "job_id": job_id,
+            "work_dir": ctx["work_dir"],
+            "out_dir": ctx["out_dir"],
+            "video_path": ctx["video_path"],
+            "audio_path": ctx["audio_path"],
+            "data": ctx["data"],
+            "clips": fallback_clips,
+            "num_clips": clips_to_charge,
+            "user_id": ctx["user_id"],
+            "user_plan": ctx["user_plan"],
+            "client_ip": ctx["client_ip"],
+        },
+        daemon=True,
+    ).start()
+
+    return {"status": "processing"}
+
+
 @app.post("/api/clip")
 async def create_clip_job(
     request: Request,
@@ -544,7 +692,6 @@ async def create_clip_job(
         or (request.client.host if request.client else "unknown")
     )
 
-    # Strictly enforce tier clip quotas regardless of whether BYOK is used
     with quota_lock:
         if user_id:
             prof = get_normalized_profile(user_id)
@@ -634,7 +781,6 @@ def get_job_status(job_id: str):
 
 @app.get("/api/my-clips")
 def get_user_saved_clips(authorization: str | None = Header(default=None)):
-    """Fetches active non-expired saved Shorts + plan quota stats for the signed-in user."""
     user = verify_supabase_user(authorization)
     if not user:
         raise HTTPException(status_code=401, detail="Sign in to view saved clips.")
@@ -666,7 +812,6 @@ def get_user_saved_clips(authorization: str | None = Header(default=None)):
 
 @app.post("/api/webhooks/lemonsqueezy")
 async def lemonsqueezy_webhook(request: Request):
-    """Upgrades user to Pro ($10/mo) or Pro Max ($50/mo) when Lemon Squeezy payment succeeds."""
     raw_body = await request.body()
     signature = request.headers.get("X-Signature", "")
     if LEMONSQUEEZY_WEBHOOK_SECRET:

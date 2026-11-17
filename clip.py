@@ -848,7 +848,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
 def render_viral_short(video_path, clip_segments, ass_path, out_path):
-    safe_ass = ass_path.replace("\", "/")
+    safe_ass = ass_path.replace("\\", "/")
     cmd = ["ffmpeg", "-y"]
     concat_inputs = []
     for idx, seg in enumerate(clip_segments):
@@ -926,3 +926,34 @@ if __name__ == "__main__":
 
     print("\nAll viral Shorts saved to 'final_shorts/'!")
 
+
+def build_fallback_clips(data, num_clips=4):
+    """Creates evenly spaced 25-35s highlight clips from transcribed speech segments when AI finds 0 peaks."""
+    segments = data.get("segments", [])
+    total_dur = float(data.get("duration") or (segments[-1]["end"] if segments else 0))
+    if total_dur < 15:
+        return []
+    count = max(1, min(num_clips, int(total_dur // 20) or 1))
+    step = total_dur / (count + 1)
+    clips = []
+    for i in range(1, count + 1):
+        center = step * i
+        start = round(max(0.0, center - 14.0), 2)
+        end = round(min(total_dur, start + 28.0), 2)
+        if end - start < 10.0:
+            continue
+        snippet_words = [
+            s.get("text", "").strip()
+            for s in segments
+            if s.get("end", 0) >= start and s.get("start", 0) <= end
+        ]
+        summary = " ".join(snippet_words)[:90].strip() or f"Highlight segment #{i}"
+        clips.append(
+            ViralClip(
+                hook_banner=f"HIGHLIGHT #{i}",
+                title=f"highlight_moment_{i}",
+                story_arc=summary,
+                segments=[ClipSegment(start=start, end=end)],
+            )
+        )
+    return clips
