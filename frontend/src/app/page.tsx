@@ -24,6 +24,9 @@ import {
   User,
   Check,
   Zap,
+  BookOpen,
+  FolderSearch,
+  HelpCircle,
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
@@ -75,18 +78,21 @@ interface UserProfile {
 
 export default function Home() {
   const [activeView, setActiveView] = useState<"create" | "library">("create");
-  const [mode, setMode] = useState<"url" | "file">("url");
+  const [mode, setMode] = useState<"file" | "url">("file");
   const [url, setUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [numClips, setNumClips] = useState(4);
   const [dynamicMode, setDynamicMode] = useState(true);
 
   // Normalized Universal BYOK state
-  const [showByok, setShowByok] = useState(false);
+  const [showByok, setShowByok] = useState(true);
   const [userProvider, setUserProvider] = useState("auto");
   const [userApiKey, setUserApiKey] = useState("");
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const [customModel, setCustomModel] = useState("");
+
+  // User Manual state
+  const [manualTab, setManualTab] = useState<"upload" | "find" | "api">("upload");
 
   // Job & Live Console Logs state
   const [jobId, setJobId] = useState<string | null>(null);
@@ -330,16 +336,26 @@ export default function Home() {
     window.open(checkoutUrl, "_blank", "noopener,noreferrer");
   };
 
+  const openGuideSection = (tab: "upload" | "find" | "api") => {
+    setActiveView("create");
+    setManualTab(tab);
+    setTimeout(() => {
+      document
+        .getElementById("user-manual")
+        ?.scrollIntoView({ behavior: "smooth" });
+    }, 50);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
-    if (mode === "url" && !url.trim()) {
-      setFormError("Please paste a valid YouTube or video URL.");
+    if (mode === "file" && !file) {
+      setFormError("Please select an MP4 or MOV video file to upload.");
       return;
     }
-    if (mode === "file" && !file) {
-      setFormError("Please select an MP4/MOV video file to upload.");
+    if (mode === "url" && !url.trim()) {
+      setFormError("Please paste a valid YouTube or video URL.");
       return;
     }
 
@@ -439,19 +455,27 @@ export default function Home() {
               </span>
             </button>
 
-            {session && (
-              <nav className="hidden sm:flex items-center gap-1 bg-zinc-900/90 p-1 rounded-xl border border-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => setActiveView("create")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    activeView === "create"
-                      ? "bg-zinc-800 text-zinc-100"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  Create Shorts
-                </button>
+            <nav className="hidden sm:flex items-center gap-1 bg-zinc-900/90 p-1 rounded-xl border border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setActiveView("create")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  activeView === "create"
+                    ? "bg-zinc-800 text-zinc-100"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                Create Shorts
+              </button>
+              <button
+                type="button"
+                onClick={() => openGuideSection("upload")}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-zinc-400 hover:text-zinc-200 transition"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+                User Manual
+              </button>
+              {session && (
                 <button
                   type="button"
                   onClick={() => {
@@ -467,8 +491,8 @@ export default function Home() {
                   <FolderHeart className="w-3.5 h-3.5" />
                   My Saved Clips ({savedClips.length})
                 </button>
-              </nav>
-            )}
+              )}
+            </nav>
           </div>
 
           <div className="flex items-center gap-2.5">
@@ -574,8 +598,8 @@ export default function Home() {
                   No saved Shorts yet
                 </h3>
                 <p className="text-sm text-zinc-400 mt-1 mb-5">
-                  Generate Shorts while signed in and they will automatically
-                  appear here for future downloads.
+                  Upload an MP4 while signed in and your rendered Shorts will
+                  automatically appear here for future downloads.
                 </p>
                 <button
                   type="button"
@@ -645,15 +669,44 @@ export default function Home() {
           <>
             {/* Hero */}
             <div className="text-center max-w-2xl mx-auto mb-10">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-300 text-xs font-bold mb-4">
+                <Upload className="w-3.5 h-3.5" />
+                Direct MP4-to-Shorts AI Engine • Bring Your Own API Key
+              </div>
               <h1 className="text-4xl sm:text-5xl font-black tracking-tight mb-4">
-                Turn Long Gaming VODs Into{" "}
+                Turn Raw MP4 Videos Into{" "}
                 <span className="text-amber-400">Viral Shorts</span>
               </h1>
               <p className="text-zinc-400 text-base sm:text-lg">
-                Paste a YouTube link or upload raw gameplay. Our AI stitches
-                setup, climax, and payoff into tight 9:16 Shorts with burned-in
-                captions.
+                Upload any MP4 gameplay, podcast, or stream recording. Our AI
+                detects peak reactions, stitches the full story arc, and burns
+                in dynamic 9:16 captions automatically.
               </p>
+              <div className="flex flex-wrap items-center justify-center gap-4 mt-4 text-xs text-zinc-400">
+                <button
+                  type="button"
+                  onClick={() => openGuideSection("upload")}
+                  className="text-amber-400 hover:underline font-semibold"
+                >
+                  How to Upload MP4s
+                </button>
+                <span>•</span>
+                <button
+                  type="button"
+                  onClick={() => openGuideSection("find")}
+                  className="text-amber-400 hover:underline font-semibold"
+                >
+                  Where to Find MP4 Files
+                </button>
+                <span>•</span>
+                <button
+                  type="button"
+                  onClick={() => openGuideSection("api")}
+                  className="text-amber-400 hover:underline font-semibold"
+                >
+                  Setup Free Custom AI API Key
+                </button>
+              </div>
               {!session && (
                 <p className="text-xs text-zinc-500 mt-3">
                   Free Tier: 4 clips every 48 hours •{" "}
@@ -675,61 +728,70 @@ export default function Home() {
 
             {/* Input Card */}
             <div className="bg-zinc-900/70 border border-zinc-800 rounded-2xl p-6 sm:p-8 shadow-2xl mb-10">
-              {/* Source Mode Tabs */}
-              <div className="flex gap-2 p-1 bg-zinc-950 rounded-xl border border-zinc-800 w-fit mb-6">
+              {/* Source Mode Tabs (MP4 Primary) */}
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+                <div className="flex gap-2 p-1 bg-zinc-950 rounded-xl border border-zinc-800 w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setMode("file")}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                      mode === "file"
+                        ? "bg-amber-400 text-zinc-950"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    <Upload className="w-4 h-4" />
+                    Upload MP4
+                    <span
+                      className={`text-[10px] font-black uppercase px-1.5 py-0.5 rounded ${
+                        mode === "file"
+                          ? "bg-zinc-950/20 text-zinc-950"
+                          : "bg-amber-400/15 text-amber-400"
+                      }`}
+                    >
+                      Primary
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMode("url")}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                      mode === "url"
+                        ? "bg-amber-400 text-zinc-950"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    <Link2 className="w-4 h-4" />
+                    YouTube Link
+                  </button>
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => setMode("url")}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${
-                    mode === "url"
-                      ? "bg-amber-400 text-zinc-950"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
+                  onClick={() => openGuideSection("find")}
+                  className="text-xs text-zinc-400 hover:text-amber-400 flex items-center gap-1.5 transition"
                 >
-                  <Link2 className="w-4 h-4" />
-                  YouTube Link
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("file")}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${
-                    mode === "file"
-                      ? "bg-amber-400 text-zinc-950"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  <Upload className="w-4 h-4" />
-                  Upload MP4
+                  <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
+                  Need help finding your MP4 file?
                 </button>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-5">
-                {mode === "url" ? (
+                {mode === "file" ? (
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                      Video URL
+                      Local Video File (.mp4 / .mov / .mkv)
                     </label>
-                    <input
-                      type="url"
-                      placeholder="https://www.youtube.com/watch?v=..."
-                      value={url}
-                      onChange={(e) => setUrl(e.target.value)}
-                      disabled={submitting || isWorking}
-                      className="w-full px-4 py-3.5 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-amber-400 focus:outline-none text-zinc-100 placeholder-zinc-600"
-                    />
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                      Local Video File (.mp4 / .mov)
-                    </label>
-                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-zinc-700 hover:border-amber-400/70 rounded-xl cursor-pointer bg-zinc-950/60 transition">
-                      <Film className="w-7 h-7 text-amber-400 mb-2" />
-                      <span className="text-sm font-medium text-zinc-300">
-                        {file ? file.name : "Click to select a video file"}
+                    <label className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-zinc-700 hover:border-amber-400/70 rounded-xl cursor-pointer bg-zinc-950/60 transition px-4 text-center">
+                      <Film className="w-8 h-8 text-amber-400 mb-2" />
+                      <span className="text-sm font-semibold text-zinc-200">
+                        {file
+                          ? `${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)`
+                          : "Click here to choose an MP4 video from your device"}
                       </span>
                       <span className="text-xs text-zinc-500 mt-1">
-                        Bypasses YouTube limits • 100% reliable
+                        Fastest & most reliable method • Works with OBS,
+                        ShadowPlay, phone videos & edited exports
                       </span>
                       <input
                         type="file"
@@ -739,6 +801,32 @@ export default function Home() {
                         onChange={(e) => setFile(e.target.files?.[0] || null)}
                       />
                     </label>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
+                      Video URL (Secondary Option)
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      disabled={submitting || isWorking}
+                      className="w-full px-4 py-3.5 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-amber-400 focus:outline-none text-zinc-100 placeholder-zinc-600"
+                    />
+                    <p className="text-[11px] text-zinc-500 mt-1.5">
+                      Tip: For 100% reliability without YouTube download blocks,
+                      use the{" "}
+                      <button
+                        type="button"
+                        onClick={() => setMode("file")}
+                        className="text-amber-400 underline"
+                      >
+                        Upload MP4
+                      </button>{" "}
+                      tab.
+                    </p>
                   </div>
                 )}
 
@@ -807,13 +895,13 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => setShowByok(!showByok)}
-                    className="w-full px-4 py-2.5 flex items-center justify-between text-xs font-semibold text-zinc-400 hover:text-zinc-200 transition"
+                    className="w-full px-4 py-2.5 flex items-center justify-between text-xs font-semibold text-zinc-300 hover:text-zinc-100 transition"
                   >
                     <span className="flex items-center gap-2">
                       <KeyRound className="w-3.5 h-3.5 text-amber-400" />
                       {hasCustomKey
                         ? `Custom AI Provider Active (${userProvider.toUpperCase()})`
-                        : "Optional: Use Your Own AI Provider Key (Gemini, Claude, Groq, OpenAI, Custom)"}
+                        : "Bring Your Own AI API Key (Gemini, Groq, Claude, OpenAI, Custom)"}
                     </span>
                     {showByok ? (
                       <ChevronUp className="w-4 h-4" />
@@ -836,9 +924,11 @@ export default function Home() {
                             className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 focus:border-amber-400 focus:outline-none text-xs text-zinc-100"
                           >
                             <option value="auto">Auto-Detect from Key</option>
-                            <option value="gemini">Google Gemini</option>
+                            <option value="gemini">Google Gemini (Free Key)</option>
+                            <option value="groq">
+                              Groq (Free Llama 3.3 + Whisper)
+                            </option>
                             <option value="claude">Anthropic Claude</option>
-                            <option value="groq">Groq (Llama 3.3 + Whisper)</option>
                             <option value="openrouter">OpenRouter (Any Model)</option>
                             <option value="openai">OpenAI (GPT-4o-mini)</option>
                             <option value="deepseek">DeepSeek</option>
@@ -850,11 +940,11 @@ export default function Home() {
 
                         <div className="sm:col-span-2">
                           <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
-                            API Key
+                            Your API Key
                           </label>
                           <input
                             type="password"
-                            placeholder="Paste any key (AIza..., sk-ant-..., gsk_..., sk-or-..., sk-...)"
+                            placeholder="Paste your key (AIza..., gsk_..., sk-ant-..., sk-or-..., sk-...)"
                             value={userApiKey}
                             onChange={(e) => handleApiKeyChange(e.target.value)}
                             disabled={submitting || isWorking}
@@ -896,11 +986,19 @@ export default function Home() {
                         </div>
                       )}
 
-                      <p className="text-[11px] text-zinc-500">
-                        Use your preferred AI model (Gemini, Claude, Groq,
-                        OpenRouter, OpenAI, DeepSeek, or custom endpoint).
-                        Stored strictly in your browser&apos;s local storage.
-                      </p>
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-400">
+                        <span>
+                          Stored strictly in your browser&apos;s local storage
+                          and sent only when generating clips.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => openGuideSection("api")}
+                          className="text-amber-400 hover:underline font-semibold"
+                        >
+                          How to get a free Gemini or Groq key →
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -941,7 +1039,7 @@ export default function Home() {
                     {submitting || isWorking ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        Processing Video...
+                        Processing MP4...
                       </>
                     ) : (
                       <>
@@ -1060,7 +1158,7 @@ export default function Home() {
 
             {/* Rendered Clips Grid */}
             {job?.clips && job.clips.length > 0 && (
-              <section>
+              <section className="mb-14">
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-2xl font-black flex items-center gap-2">
                     <Sparkles className="w-5 h-5 text-amber-400" />
@@ -1126,11 +1224,304 @@ export default function Home() {
                 </div>
               </section>
             )}
+
+            {/* Complete User Manual Section */}
+            <section
+              id="user-manual"
+              className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 sm:p-8"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-zinc-800">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-black flex items-center gap-2.5">
+                    <BookOpen className="w-6 h-6 text-amber-400" />
+                    ClipForge AI User Manual
+                  </h2>
+                  <p className="text-xs sm:text-sm text-zinc-400 mt-1">
+                    Everything you need to upload MP4 recordings, locate your
+                    video files, and connect your own AI API keys.
+                  </p>
+                </div>
+
+                {/* Manual Topic Switcher */}
+                <div className="flex flex-wrap gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => setManualTab("upload")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      manualTab === "upload"
+                        ? "bg-amber-400 text-zinc-950"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    1. How to Upload MP4
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setManualTab("find")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      manualTab === "find"
+                        ? "bg-amber-400 text-zinc-950"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    <FolderSearch className="w-3.5 h-3.5" />
+                    2. Where to Find MP4s
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setManualTab("api")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      manualTab === "api"
+                        ? "bg-amber-400 text-zinc-950"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    3. Custom API Setup
+                  </button>
+                </div>
+              </div>
+
+              {/* Tab 1: How to Upload MP4 Files */}
+              {manualTab === "upload" && (
+                <div className="pt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80">
+                    <div className="text-xs font-black text-amber-400 uppercase mb-1">
+                      Step 1
+                    </div>
+                    <h3 className="font-bold text-sm text-zinc-100 mb-1.5">
+                      Select Upload MP4
+                    </h3>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      Ensure the <strong>Upload MP4</strong> tab is active at the
+                      top of the studio, then click the dashed upload box to
+                      pick any <code>.mp4</code>, <code>.mov</code>, or{" "}
+                      <code>.mkv</code> file from your PC or phone.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80">
+                    <div className="text-xs font-black text-amber-400 uppercase mb-1">
+                      Step 2
+                    </div>
+                    <h3 className="font-bold text-sm text-zinc-100 mb-1.5">
+                      Add Your AI API Key
+                    </h3>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      Paste your personal Gemini, Groq, Claude, or OpenAI key
+                      into the <strong>Bring Your Own AI API Key</strong> box
+                      so your clips process immediately without shared server
+                      rate limits.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80">
+                    <div className="text-xs font-black text-amber-400 uppercase mb-1">
+                      Step 3
+                    </div>
+                    <h3 className="font-bold text-sm text-zinc-100 mb-1.5">
+                      Choose Pacing & Count
+                    </h3>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      Pick <strong>Dynamic Story Jump-Cut</strong> (stitches
+                      setup, climax, and payoff under 58s) or{" "}
+                      <strong>Single Continuous Clip</strong>, select how many
+                      Shorts you want, and click{" "}
+                      <strong>Generate Viral Shorts</strong>.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80">
+                    <div className="text-xs font-black text-amber-400 uppercase mb-1">
+                      Step 4
+                    </div>
+                    <h3 className="font-bold text-sm text-zinc-100 mb-1.5">
+                      Preview & Download
+                    </h3>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      Watch the live progress bar reach 100%. Preview each
+                      vertical 9:16 Short with burned-in captions right in your
+                      browser and click <strong>Download</strong> to save the
+                      ready-to-post MP4.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 2: Where to Find & Export MP4 Files */}
+              {manualTab === "find" && (
+                <div className="pt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80">
+                    <h3 className="font-bold text-sm text-amber-400 mb-1">
+                      OBS Studio Recordings
+                    </h3>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      Open <code>C:\Users\&lt;YourName&gt;\Videos</code> on
+                      Windows or <code>~/Movies</code> on Mac. If OBS saves as{" "}
+                      <code>.mkv</code>, go to{" "}
+                      <strong>OBS → File → Remux Recordings</strong> to convert
+                      it to <code>.mp4</code> in 2 seconds.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80">
+                    <h3 className="font-bold text-sm text-amber-400 mb-1">
+                      NVIDIA ShadowPlay / GeForce
+                    </h3>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      Press <strong>Alt + Z → Gallery</strong>, or open{" "}
+                      <code>
+                        C:\Users\&lt;YourName&gt;\Videos\&lt;GameName&gt;
+                      </code>
+                      . Instant Replay and manual recordings are already saved
+                      as standard <code>.mp4</code> files.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80">
+                    <h3 className="font-bold text-sm text-amber-400 mb-1">
+                      Windows Xbox Game Bar
+                    </h3>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      Press <strong>Win + G</strong> to open the overlay or
+                      navigate directly to{" "}
+                      <code>C:\Users\&lt;YourName&gt;\Videos\Captures</code>{" "}
+                      where all screen captures are stored in{" "}
+                      <code>.mp4</code> format.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80">
+                    <h3 className="font-bold text-sm text-amber-400 mb-1">
+                      Your Own YouTube Videos
+                    </h3>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      Go to <strong>YouTube Studio → Content</strong>, click
+                      the <strong>three dots (⋮)</strong> next to any video
+                      you uploaded, and click <strong>Download</strong> to get
+                      the official clean <code>.mp4</code> file.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80">
+                    <h3 className="font-bold text-sm text-amber-400 mb-1">
+                      CapCut / Premiere / DaVinci
+                    </h3>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      Export your timeline using{" "}
+                      <strong>Format: MP4 (H.264)</strong> at{" "}
+                      <strong>720p or 1080p</strong>, then upload that exported
+                      file directly into ClipForge AI to auto-generate multiple
+                      captioned Shorts.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80">
+                    <h3 className="font-bold text-sm text-amber-400 mb-1">
+                      iPhone & Android Recordings
+                    </h3>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      Open your phone&apos;s <strong>Photos / Gallery</strong>{" "}
+                      or <strong>Files → DCIM / Movies</strong> folder. Both
+                      Android <code>.mp4</code> and iPhone <code>.mov</code>{" "}
+                      camera/screen recordings are supported natively.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 3: Custom API Key Setup (BYOK) */}
+              {manualTab === "api" && (
+                <div className="pt-6 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80">
+                      <div className="text-[11px] font-black uppercase text-emerald-400 mb-1">
+                        Free Option #1 (Recommended)
+                      </div>
+                      <h3 className="font-bold text-sm text-zinc-100 mb-1.5">
+                        Google Gemini API Key
+                      </h3>
+                      <ol className="text-xs text-zinc-400 space-y-1 list-decimal list-inside">
+                        <li>
+                          Visit{" "}
+                          <a
+                            href="https://aistudio.google.com/apikey"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-amber-400 underline"
+                          >
+                            aistudio.google.com/apikey
+                          </a>
+                          .
+                        </li>
+                        <li>
+                          Click <strong>Create API key</strong> and copy the key
+                          starting with <code>AIza...</code>.
+                        </li>
+                        <li>
+                          Paste it into the <strong>Your API Key</strong> field
+                          above (auto-detected automatically).
+                        </li>
+                      </ol>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80">
+                      <div className="text-[11px] font-black uppercase text-emerald-400 mb-1">
+                        Free Option #2 (Ultra-Fast)
+                      </div>
+                      <h3 className="font-bold text-sm text-zinc-100 mb-1.5">
+                        Groq Cloud API Key
+                      </h3>
+                      <ol className="text-xs text-zinc-400 space-y-1 list-decimal list-inside">
+                        <li>
+                          Visit{" "}
+                          <a
+                            href="https://console.groq.com/keys"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-amber-400 underline"
+                          >
+                            console.groq.com/keys
+                          </a>
+                          .
+                        </li>
+                        <li>
+                          Click <strong>Create API Key</strong> and copy the key
+                          starting with <code>gsk_...</code>.
+                        </li>
+                        <li>
+                          Paste it above—powers both ultra-fast Whisper
+                          transcription and Llama 3.3 clip selection.
+                        </li>
+                      </ol>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80">
+                      <div className="text-[11px] font-black uppercase text-amber-400 mb-1">
+                        Any Provider / Local LLM
+                      </div>
+                      <h3 className="font-bold text-sm text-zinc-100 mb-1.5">
+                        Claude, OpenAI, OpenRouter & Custom
+                      </h3>
+                      <p className="text-xs text-zinc-400 leading-relaxed">
+                        Paste any <code>sk-ant-...</code> (Claude),{" "}
+                        <code>sk-...</code> (OpenAI), or <code>sk-or-...</code>{" "}
+                        (OpenRouter) key. For Together, Fireworks, or local
+                        Ollama, choose{" "}
+                        <strong>Custom OpenAI-Compatible Endpoint</strong> and
+                        enter your Base URL + Model Name.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </section>
           </>
         )}
       </div>
 
-      {/* 3-Tier Pricing Modal (Free / Pro $10 / Pro Max $50) */}
+      {/* 3-Tier Pricing Modal (Free / Pro $10 / Pro Max $50 — All BYOK) */}
       {showPricingModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-4xl w-full p-6 sm:p-8 shadow-2xl my-8">
@@ -1140,8 +1531,8 @@ export default function Home() {
                   Choose Your ClipForge AI Plan
                 </h2>
                 <p className="text-xs text-zinc-400 mt-1">
-                  Start free, or scale your Shorts output with extended cloud
-                  backups and higher daily limits.
+                  Bring your own AI API key on every tier and scale your MP4
+                  rendering capacity and cloud storage.
                 </p>
               </div>
               <button
@@ -1165,8 +1556,8 @@ export default function Home() {
                     <span className="text-xs text-zinc-500">/ forever</span>
                   </div>
                   <p className="text-xs text-zinc-400 mt-2">
-                    Test Dynamic Story Jump-Cuts and word-level captions for
-                    free.
+                    Test MP4-to-Shorts jump-cuts and word-level captions with
+                    your own AI key.
                   </p>
                   <ul className="mt-5 space-y-2.5 text-xs text-zinc-300">
                     <li className="flex items-center gap-2">
@@ -1183,11 +1574,11 @@ export default function Home() {
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Up to 4 Shorts per video</span>
+                      <span>Up to 4 Shorts per MP4 video</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Bring your own AI key supported</span>
+                      <span>Bring Your Own AI Key (Gemini, Groq, etc.)</span>
                     </li>
                   </ul>
                 </div>
@@ -1231,11 +1622,11 @@ export default function Home() {
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                      <span>Up to 8 Shorts per video</span>
+                      <span>Up to 8 Shorts per MP4 video</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                      <span>No API key setup required</span>
+                      <span>Bring Your Own AI Key (all providers)</span>
                     </li>
                   </ul>
                 </div>
@@ -1263,8 +1654,8 @@ export default function Home() {
                     <span className="text-xs text-zinc-400">/ month</span>
                   </div>
                   <p className="text-xs text-zinc-400 mt-2">
-                    Maximum throughput and permanent storage for high-volume
-                    channels & agencies.
+                    Maximum rendering throughput and permanent storage for
+                    high-volume channels & agencies.
                   </p>
                   <ul className="mt-5 space-y-2.5 text-xs text-zinc-200">
                     <li className="flex items-center gap-2">
@@ -1281,11 +1672,11 @@ export default function Home() {
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="w-4 h-4 text-orange-400 shrink-0" />
-                      <span>Up to 10 Shorts per video</span>
+                      <span>Up to 10 Shorts per MP4 video</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="w-4 h-4 text-orange-400 shrink-0" />
-                      <span>Priority cloud rendering queue</span>
+                      <span>Bring Your Own AI Key + Priority Queue</span>
                     </li>
                   </ul>
                 </div>
