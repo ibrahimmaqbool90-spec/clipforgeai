@@ -460,11 +460,19 @@ export default function Home() {
     if (!uid) return;
 
     let cancelled = false;
-    supabase.auth.getUser().then(({ data }) => {
-      if (cancelled || data?.user?.id !== uid) return;
-      const metaFolders = data.user.user_metadata?.folders;
-      setCustomFolders(Array.isArray(metaFolders) ? metaFolders : []);
-    });
+    fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/user`, {
+      headers: {
+        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((u) => {
+        if (cancelled || !u || u.id !== uid) return;
+        const metaFolders = u.user_metadata?.folders;
+        setCustomFolders(Array.isArray(metaFolders) ? metaFolders : []);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -483,7 +491,15 @@ export default function Home() {
     const updated = customFolders.filter((f) => f !== folderName);
     setCustomFolders(updated);
     if (session?.user?.id) {
-      await supabase.auth.updateUser({ data: { folders: updated } });
+      await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/user`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ data: { folders: updated } }),
+      });
     }
     if (selectedFolder === folderName) {
       setSelectedFolder("ALL");
@@ -509,7 +525,15 @@ export default function Home() {
     if (!allFolders.includes(name)) {
       const updated = [...customFolders, name];
       setCustomFolders(updated);
-      await supabase.auth.updateUser({ data: { folders: updated } });
+      await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/user`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ data: { folders: updated } }),
+      });
     }
     setSelectedFolder(name);
     setNewFolderInput("");
