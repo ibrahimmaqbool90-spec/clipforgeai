@@ -1,3 +1,5 @@
+import socket
+socket.setdefaulttimeout(15)
 ﻿import json
 import os
 import re
@@ -606,7 +608,7 @@ TIMELINE:
 
     # TIER 1: Google Gemini Server Free Tier (Fast 15s cap)
     if GEMINI_API_KEY and time.time() < llm_deadline:
-        g_client = genai.Client(api_key=GEMINI_API_KEY, http_options={"timeout": 15000})
+        g_client = genai.Client(api_key=GEMINI_API_KEY, http_options={"timeout": 15})
         for attempt, model_name in enumerate(
             ["gemini-2.5-flash", "gemini-2.5-flash-lite"], 1
         ):
