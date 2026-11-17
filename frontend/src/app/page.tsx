@@ -45,6 +45,12 @@ interface ClipResult {
   end?: number;
   duration: number;
   video_url: string;
+  social_meta?: {
+    post_title: string;
+    description: string;
+    hashtags: string;
+    pinned_comment: string;
+  };
   expires_at?: string | null;
   created_at?: string;
 }
@@ -426,6 +432,20 @@ export default function Home() {
   };
 
   const [confirming, setConfirming] = useState(false);
+  const [openMetaIds, setOpenMetaIds] = useState<Record<string, boolean>>({});
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const toggleClipMeta = (id: number | string) => {
+    const k = String(id);
+    setOpenMetaIds((prev) => ({ ...prev, [k]: !prev[k] }));
+  };
+
+  const copyMetaText = (key: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 1800);
+  };
+
 
   const handleConfirmChoice = async (proceed: boolean) => {
     if (!jobId) return;
@@ -663,6 +683,101 @@ export default function Home() {
                         <p className="text-xs text-zinc-400 mt-1 line-clamp-2">
                           {clip.story_arc}
                         </p>
+                      </div>
+                                            {/* Shorts / Reels Post Details Dropdown */}
+                      <div className="border-t border-zinc-800/80 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleClipMeta(clip.id)}
+                          className="w-full flex items-center justify-between text-[11px] font-bold text-amber-400 hover:text-amber-300 py-1 transition"
+                        >
+                          <span>Shorts / Reels Title & Caption</span>
+                          {openMetaIds[String(clip.id)] ? (
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          ) : (
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+
+                        {openMetaIds[String(clip.id)] && (() => {
+                          const fallbackTitle = `${clip.title.replace(/[_-]+/g, " ")} (${clip.hook_banner})`;
+                          const fallbackTags = "#shorts #reels #viral #fyp";
+                          const fallbackDesc = `${clip.hook_banner} ??\n${clip.story_arc}\n\n${fallbackTags}`;
+                          const fallbackPin = "Wait till the end ?? Rate this 1-10 in the comments!";
+                          const meta = clip.social_meta || {
+                            post_title: fallbackTitle,
+                            description: fallbackDesc,
+                            hashtags: fallbackTags,
+                            pinned_comment: fallbackPin,
+                          };
+                          return (
+                            <div className="mt-2 space-y-2.5 bg-zinc-950/90 border border-zinc-800 rounded-xl p-2.5 text-[11px]">
+                              <div>
+                                <div className="flex items-center justify-between text-zinc-400 font-semibold mb-0.5">
+                                  <span>Title</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyMetaText(`${clip.id}-title`, meta.post_title)}
+                                    className="text-amber-400 hover:underline font-bold"
+                                  >
+                                    {copiedKey === `${clip.id}-title` ? "Copied!" : "Copy"}
+                                  </button>
+                                </div>
+                                <p className="text-zinc-200 bg-zinc-900 px-2 py-1.5 rounded border border-zinc-800/80 select-all">
+                                  {meta.post_title}
+                                </p>
+                              </div>
+
+                              <div>
+                                <div className="flex items-center justify-between text-zinc-400 font-semibold mb-0.5">
+                                  <span>Description & Tags</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyMetaText(`${clip.id}-desc`, meta.description)}
+                                    className="text-amber-400 hover:underline font-bold"
+                                  >
+                                    {copiedKey === `${clip.id}-desc` ? "Copied!" : "Copy"}
+                                  </button>
+                                </div>
+                                <pre className="whitespace-pre-wrap font-sans text-zinc-300 bg-zinc-900 px-2 py-1.5 rounded border border-zinc-800/80 max-h-24 overflow-y-auto select-all">
+                                  {meta.description}
+                                </pre>
+                              </div>
+
+                              <div>
+                                <div className="flex items-center justify-between text-zinc-400 font-semibold mb-0.5">
+                                  <span>Hashtags</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyMetaText(`${clip.id}-tags`, meta.hashtags)}
+                                    className="text-amber-400 hover:underline font-bold"
+                                  >
+                                    {copiedKey === `${clip.id}-tags` ? "Copied!" : "Copy"}
+                                  </button>
+                                </div>
+                                <p className="text-amber-300/90 bg-zinc-900 px-2 py-1 rounded border border-zinc-800/80 select-all">
+                                  {meta.hashtags}
+                                </p>
+                              </div>
+
+                              <div>
+                                <div className="flex items-center justify-between text-zinc-400 font-semibold mb-0.5">
+                                  <span>Pinned Comment</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyMetaText(`${clip.id}-pin`, meta.pinned_comment)}
+                                    className="text-amber-400 hover:underline font-bold"
+                                  >
+                                    {copiedKey === `${clip.id}-pin` ? "Copied!" : "Copy"}
+                                  </button>
+                                </div>
+                                <p className="text-zinc-300 bg-zinc-900 px-2 py-1 rounded border border-zinc-800/80 select-all">
+                                  {meta.pinned_comment}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                       <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between">
                         <span className="text-xs font-mono text-zinc-500">
@@ -1250,7 +1365,102 @@ export default function Home() {
                             {clip.story_arc}
                           </p>
                         </div>
-                        <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between">
+                                              {/* Shorts / Reels Post Details Dropdown */}
+                      <div className="border-t border-zinc-800/80 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleClipMeta(clip.id)}
+                          className="w-full flex items-center justify-between text-[11px] font-bold text-amber-400 hover:text-amber-300 py-1 transition"
+                        >
+                          <span>Shorts / Reels Title & Caption</span>
+                          {openMetaIds[String(clip.id)] ? (
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          ) : (
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+
+                        {openMetaIds[String(clip.id)] && (() => {
+                          const fallbackTitle = `${clip.title.replace(/[_-]+/g, " ")} (${clip.hook_banner})`;
+                          const fallbackTags = "#shorts #reels #viral #fyp";
+                          const fallbackDesc = `${clip.hook_banner} ??\n${clip.story_arc}\n\n${fallbackTags}`;
+                          const fallbackPin = "Wait till the end ?? Rate this 1-10 in the comments!";
+                          const meta = clip.social_meta || {
+                            post_title: fallbackTitle,
+                            description: fallbackDesc,
+                            hashtags: fallbackTags,
+                            pinned_comment: fallbackPin,
+                          };
+                          return (
+                            <div className="mt-2 space-y-2.5 bg-zinc-950/90 border border-zinc-800 rounded-xl p-2.5 text-[11px]">
+                              <div>
+                                <div className="flex items-center justify-between text-zinc-400 font-semibold mb-0.5">
+                                  <span>Title</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyMetaText(`${clip.id}-title`, meta.post_title)}
+                                    className="text-amber-400 hover:underline font-bold"
+                                  >
+                                    {copiedKey === `${clip.id}-title` ? "Copied!" : "Copy"}
+                                  </button>
+                                </div>
+                                <p className="text-zinc-200 bg-zinc-900 px-2 py-1.5 rounded border border-zinc-800/80 select-all">
+                                  {meta.post_title}
+                                </p>
+                              </div>
+
+                              <div>
+                                <div className="flex items-center justify-between text-zinc-400 font-semibold mb-0.5">
+                                  <span>Description & Tags</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyMetaText(`${clip.id}-desc`, meta.description)}
+                                    className="text-amber-400 hover:underline font-bold"
+                                  >
+                                    {copiedKey === `${clip.id}-desc` ? "Copied!" : "Copy"}
+                                  </button>
+                                </div>
+                                <pre className="whitespace-pre-wrap font-sans text-zinc-300 bg-zinc-900 px-2 py-1.5 rounded border border-zinc-800/80 max-h-24 overflow-y-auto select-all">
+                                  {meta.description}
+                                </pre>
+                              </div>
+
+                              <div>
+                                <div className="flex items-center justify-between text-zinc-400 font-semibold mb-0.5">
+                                  <span>Hashtags</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyMetaText(`${clip.id}-tags`, meta.hashtags)}
+                                    className="text-amber-400 hover:underline font-bold"
+                                  >
+                                    {copiedKey === `${clip.id}-tags` ? "Copied!" : "Copy"}
+                                  </button>
+                                </div>
+                                <p className="text-amber-300/90 bg-zinc-900 px-2 py-1 rounded border border-zinc-800/80 select-all">
+                                  {meta.hashtags}
+                                </p>
+                              </div>
+
+                              <div>
+                                <div className="flex items-center justify-between text-zinc-400 font-semibold mb-0.5">
+                                  <span>Pinned Comment</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyMetaText(`${clip.id}-pin`, meta.pinned_comment)}
+                                    className="text-amber-400 hover:underline font-bold"
+                                  >
+                                    {copiedKey === `${clip.id}-pin` ? "Copied!" : "Copy"}
+                                  </button>
+                                </div>
+                                <p className="text-zinc-300 bg-zinc-900 px-2 py-1 rounded border border-zinc-800/80 select-all">
+                                  {meta.pinned_comment}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between">
                           <span className="text-xs font-mono text-zinc-500">
                             {clip.duration}s
                           </span>
