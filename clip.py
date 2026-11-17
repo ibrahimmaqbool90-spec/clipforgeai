@@ -848,91 +848,45 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
 def render_viral_short(video_path, clip_segments, ass_path, out_path):
-    safe_ass = ass_path.replace("\\", "/")
-    first_seg = clip_segments[0]
-    layout_name, box = detect_camera_layout(
-        video_path, first_seg.start, first_seg.end
-    )
-    print(f"   Detected layout: {layout_name} ({len(clip_segments)} segment(s))")
-
+    safe_ass = ass_path.replace("\", "/")
     cmd = ["ffmpeg", "-y"]
     concat_inputs = []
     for idx, seg in enumerate(clip_segments):
         cmd.extend([
-            "-ss",
-            str(seg.start),
-            "-t",
-            str(round(seg.end - seg.start, 3)),
-            "-i",
-            video_path,
+            "-ss", str(seg.start),
+            "-t", str(round(seg.end - seg.start, 3)),
+            "-i", video_path,
         ])
         concat_inputs.append(f"[{idx}:v][{idx}:a]")
 
     if len(clip_segments) == 1:
         stitch_chain = "[0:v]null[rawv];[0:a]anull[outa];"
     else:
-        stitch_chain = (
-            f"{''.join(concat_inputs)}concat=n={len(clip_segments)}:v=1:a=1[rawv][outa];"
-        )
+        stitch_chain = f"{''.join(concat_inputs)}concat=n={len(clip_segments)}:v=1:a=1[rawv][outa];"
 
-    # Low-memory 720x1280 vertical canvas with single-thread x264 to prevent Railway OOM SIGKILL
-    bg_chain = (
-        "[rawv]split=2[bg_src][fg_src];"
-        "[bg_src]scale=180:320:force_original_aspect_ratio=increase,"
-        "crop=180:320,boxblur=8:3,scale=720:1280[bg];"
+    # Ultra-low-RAM 540x960 vertical canvas (no split/boxblur memory spike)
+    filter_complex = (
+        stitch_chain
+        + "[rawv]scale=540:960:force_original_aspect_ratio=decrease,"
+        "pad=540:960:(ow-iw)/2:(oh-ih)/2:black[v];"
+        f"[v]ass={safe_ass}[outv]"
     )
-
-    if layout_name == "full_widescreen":
-        filter_complex = (
-            stitch_chain
-            + bg_chain
-            + "[fg_src]scale=720:-2[fg];"
-            "[bg][fg]overlay=0:(H-h)/2[v];"
-            f"[v]ass={safe_ass}[outv]"
-        )
-    else:
-        rx, ry, rw, rh = box
-        filter_complex = (
-            stitch_chain
-            + bg_chain
-            + "[fg_src]split=2[cam_src][game_src];"
-            f"[cam_src]crop=iw*{rw}:ih*{rh}:iw*{rx}:ih*{ry},"
-            "scale=720:426:force_original_aspect_ratio=increase,crop=720:426[cam];"
-            "[game_src]scale=720:-2[game];"
-            "[bg][cam]overlay=0:0[bg_cam];"
-            "[bg_cam][game]overlay=0:426[v];"
-            f"[v]ass={safe_ass}[outv]"
-        )
 
     cmd.extend([
-        "-filter_complex",
-        filter_complex,
-        "-map",
-        "[outv]",
-        "-map",
-        "[outa]",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "ultrafast",
-        "-crf",
-        "23",
-        "-threads",
-        "1",
-        "-maxrate",
-        "2500k",
-        "-bufsize",
-        "1M",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "128k",
+        "-filter_complex", filter_complex,
+        "-map", "[outv]",
+        "-map", "[outa]",
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-crf", "24",
+        "-threads", "1",
+        "-maxrate", "1800k",
+        "-bufsize", "512k",
+        "-c:a", "aac",
+        "-b:a", "128k",
         out_path,
     ])
-
-    subprocess.run(
-        cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True
-    )
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
 
 if __name__ == "__main__":
