@@ -406,28 +406,10 @@ def render_selected_clips(
                 "social_meta": build_social_metadata(c, data.get("segments", [])),
             }
 
-            cloud_url = save_clip_to_cloud(
-                user_id, user_plan, job_id, out_file, filename, clip_record
+            add_log(
+                job_id,
+                f"ffmpeg [{idx}/{len(clips)}]: Exported 540x960 H.264 MP4 (ready to Save or Download).",
             )
-            if cloud_url and not str(cloud_url).startswith("ERROR:"):
-                clip_record["video_url"] = cloud_url
-                clip_record["saved_to_cloud"] = True
-                retention = (
-                    "permanently"
-                    if PLAN_LIMITS[user_plan]["backup_days"] is None
-                    else f"for {PLAN_LIMITS[user_plan]['backup_days']} days"
-                )
-                add_log(
-                    job_id,
-                    f"cloud [{idx}/{len(clips)}]: Backed up {retention} in My Saved Clips.",
-                )
-            else:
-                if str(cloud_url).startswith("ERROR:"):
-                    add_log(job_id, f"cloud warning: {str(cloud_url)[6:]}")
-                add_log(
-                    job_id,
-                    f"ffmpeg [{idx}/{len(clips)}]: Exported 540x960 H.264 MP4.",
-                )
 
             results.append(clip_record)
 
@@ -889,7 +871,7 @@ def get_user_saved_clips(authorization: str | None = Header(default=None)):
     cfg = PLAN_LIMITS[prof["plan"]]
     remaining = max(0, cfg["max_clips_window"] - prof["clips_used_in_window"])
 
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     clips = (
         _supabase_request(
             f"/rest/v1/saved_clips?user_id=eq.{user_id}"
