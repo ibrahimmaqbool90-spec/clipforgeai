@@ -602,12 +602,16 @@ TIMELINE:
                 " tiers..."
             )
 
-    # TIER 1: Google Gemini Server Free Tier (Flash -> Flash-Lite -> Pro)
-    if GEMINI_API_KEY:
-        g_client = genai.Client(api_key=GEMINI_API_KEY)
+    llm_deadline = time.time() + 20.0
+
+    # TIER 1: Google Gemini Server Free Tier (Fast 15s cap)
+    if GEMINI_API_KEY and time.time() < llm_deadline:
+        g_client = genai.Client(api_key=GEMINI_API_KEY, http_options={"timeout": 15000})
         for attempt, model_name in enumerate(
-            ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.8-pro"], 1
+            ["gemini-2.5-flash", "gemini-2.5-flash-lite"], 1
         ):
+            if time.time() >= llm_deadline:
+                break
             try:
                 print(f"[4/4] AI Editor (Gemini: {model_name}) mapping highlights...")
                 resp = g_client.models.generate_content(
@@ -630,7 +634,7 @@ TIMELINE:
                 time.sleep(attempt * 2)
 
     # TIER 2: Groq Server Free Tier Fallback (Llama 3.3 70B)
-    if GROQ_API_KEY:
+    if GROQ_API_KEY and time.time() < llm_deadline:
         try:
             print("[4/4] Gemini busy -> Switching to Groq (llama-3.3-70b-versatile)...")
             distinct = _call_openai_compatible_json(
@@ -646,7 +650,7 @@ TIMELINE:
             print(f"   Groq unavailable ({e}), switching to OpenRouter...")
 
     # TIER 3: OpenRouter Server Free Tier Fallback
-    if OPENROUTER_API_KEY:
+    if OPENROUTER_API_KEY and time.time() < llm_deadline:
         try:
             print("[4/4] Switching to OpenRouter Free Tier (openrouter/free)...")
             distinct = _call_openai_compatible_json(
@@ -953,7 +957,7 @@ def build_fallback_clips(data, num_clips=4):
                 hook_banner=f"HIGHLIGHT #{i}",
                 title=f"highlight_moment_{i}",
                 story_arc=summary,
-                segments=[ClipSegment(start=start, end=end)],
+                segments=[TimeSegment(start=start, end=end)],
             )
         )
     return clips
