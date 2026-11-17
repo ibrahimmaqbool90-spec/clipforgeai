@@ -450,11 +450,25 @@ export default function Home() {
   const [newFolderInput, setNewFolderInput] = useState("");
 
   useEffect(() => {
+    setSelectedFolder("ALL");
+    setShowFolderPicker(false);
+    setCustomFolders([]);
     try {
-      const savedF = JSON.parse(localStorage.getItem("peakslicer_folders") || "[]");
-      if (Array.isArray(savedF)) setCustomFolders(savedF);
+      localStorage.removeItem("peakslicer_folders");
     } catch {}
-  }, []);
+    const uid = session?.user?.id;
+    if (!uid) return;
+
+    let cancelled = false;
+    supabase.auth.getUser().then(({ data }) => {
+      if (cancelled || data?.user?.id !== uid) return;
+      const metaFolders = data.user.user_metadata?.folders;
+      setCustomFolders(Array.isArray(metaFolders) ? metaFolders : []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id]);
 
   const allFolders = Array.from(
     new Set([
@@ -469,10 +483,7 @@ export default function Home() {
     const updated = customFolders.filter((f) => f !== folderName);
     setCustomFolders(updated);
     if (session?.user?.id) {
-      localStorage.setItem(
-        `peakslicer_folders_${session.user.id}`,
-        JSON.stringify(updated)
-      );
+      await supabase.auth.updateUser({ data: { folders: updated } });
     }
     if (selectedFolder === folderName) {
       setSelectedFolder("ALL");
@@ -491,14 +502,14 @@ export default function Home() {
     }
   };
 
-  const handleCreateFolder = (e: React.FormEvent) => {
+  const handleCreateFolder = async (e: React.FormEvent) => {
     e.preventDefault();
     const name = newFolderInput.trim();
-    if (!name) return;
+    if (!name || !session?.user?.id) return;
     if (!allFolders.includes(name)) {
       const updated = [...customFolders, name];
       setCustomFolders(updated);
-      localStorage.setItem("peakslicer_folders", JSON.stringify(updated));
+      await supabase.auth.updateUser({ data: { folders: updated } });
     }
     setSelectedFolder(name);
     setNewFolderInput("");
@@ -916,10 +927,10 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={() => setConfirmDeleteTarget({ type: "folder", folderName: folder })}
-                        className="px-1.5 py-1 text-zinc-500 hover:text-red-400 border-l border-zinc-800/80 transition"
+                        className="px-1.5 py-1 text-zinc-400 hover:text-red-400 border-l border-zinc-800/80 transition flex items-center"
                         title={`Delete folder "${folder}"`}
                       >
-                        ?
+                        <X className="w-3 h-3" />
                       </button>
                     </div>
                   ))}
