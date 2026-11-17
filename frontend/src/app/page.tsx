@@ -45,6 +45,7 @@ interface ClipResult {
   end?: number;
   duration: number;
   video_url: string;
+  saved_to_cloud?: boolean;
   social_meta?: {
     post_title: string;
     description: string;
@@ -432,6 +433,62 @@ export default function Home() {
   };
 
   const [confirming, setConfirming] = useState(false);
+  const [savingClipId, setSavingClipId] = useState<string | null>(null);
+  const [manuallySavedIds, setManuallySavedIds] = useState<Record<string, boolean>>({});
+
+  const focusApiKeySetup = () => {
+    setActiveView("create");
+    setShowByok(true);
+    setManualTab("api");
+    setTimeout(() => {
+      const el = document.getElementById("byok-api-box");
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      const inp = document.getElementById("byok-key-input") as HTMLInputElement | null;
+      if (inp) inp.focus();
+    }, 80);
+  };
+
+  const handleSaveClip = async (clip: ClipResult) => {
+    if (!session) {
+      setAuthMode("login");
+      setShowAuthModal(true);
+      return;
+    }
+    const key = String(clip.id);
+    setSavingClipId(key);
+    try {
+      const res = await fetch(`${API_BASE}/api/save-clip`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          job_id: jobId,
+          video_url: clip.video_url,
+          hook_banner: clip.hook_banner,
+          title: clip.title,
+          story_arc: clip.story_arc,
+          cuts: clip.cuts || 1,
+          duration: clip.duration,
+        }),
+      });
+      if (res.ok) {
+        setManuallySavedIds((prev) => ({ ...prev, [key]: true }));
+        fetchUserLibrary(session);
+      } else {
+        const err = await res.json();
+        alert(err.detail || "Could not save clip.");
+      }
+    } catch {
+      alert("Network error while saving clip.");
+    } finally {
+      setSavingClipId(null);
+    }
+  };
+
   const [openMetaIds, setOpenMetaIds] = useState<Record<string, boolean>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -516,23 +573,26 @@ export default function Home() {
                 <BookOpen className="w-3.5 h-3.5 text-amber-400" />
                 User Manual
               </button>
-              {session && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveView("library");
-                    fetchUserLibrary(session);
-                  }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                    activeView === "library"
-                      ? "bg-zinc-800 text-amber-400"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  <FolderHeart className="w-3.5 h-3.5" />
-                  My Saved Clips ({savedClips.length})
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (!session) {
+                    setAuthMode("login");
+                    setShowAuthModal(true);
+                    return;
+                  }
+                  setActiveView("library");
+                  fetchUserLibrary(session);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  activeView === "library"
+                    ? "bg-zinc-800 text-amber-400"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <FolderHeart className="w-3.5 h-3.5 text-amber-400" />
+                My Saved Clips{session ? ` (${savedClips.length})` : ""}
+              </button>
             </nav>
           </div>
 
@@ -1027,7 +1087,7 @@ export default function Home() {
                 </div>
 
                 {/* Normalized Universal BYOK Drawer */}
-                <div className="border border-zinc-800/80 rounded-xl bg-zinc-950/50 overflow-hidden">
+                <div id="byok-api-box" className="border border-amber-400/30 rounded-xl bg-zinc-950/50 overflow-hidden">
                   <button
                     type="button"
                     onClick={() => setShowByok(!showByok)}
@@ -1080,6 +1140,7 @@ export default function Home() {
                           </label>
                           <input
                             type="password"
+                            id="byok-key-input"
                             placeholder="Paste your key (AIza..., gsk_..., sk-ant-..., sk-or-..., sk-...)"
                             value={userApiKey}
                             onChange={(e) => handleApiKeyChange(e.target.value)}
@@ -1188,20 +1249,42 @@ export default function Home() {
               </form>
 
               {formError && (
-                <div className="mt-5 p-4 rounded-xl bg-red-950/50 border border-red-800/70 text-red-300 text-sm flex items-center justify-between gap-2.5">
-                  <span className="flex items-center gap-2.5">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    {formError}
-                  </span>
-                  {(formError.includes("limit") ||
-                    formError.includes("Upgrade")) && (
-                    <button
-                      type="button"
-                      onClick={() => setShowPricingModal(true)}
-                      className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-400 text-zinc-950 font-black text-xs"
-                    >
-                      View Plans
-                    </button>
+                <div className="mt-5 p-4 rounded-xl bg-red-950/50 border border-red-800/70 text-red-200 text-sm space-y-3">
+                  <div className="flex items-center justify-between gap-2.5">
+                    <span className="flex items-center gap-2.5">
+                      <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                      {formError.replace("API_BUSY:", "").trim()}
+                    </span>
+                    {(formError.includes("limit") ||
+                      formError.includes("Upgrade")) && (
+                      <button
+                        type="button"
+                        onClick={() => setShowPricingModal(true)}
+                        className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-400 text-zinc-950 font-black text-xs"
+                      >
+                        View Plans
+                      </button>
+                    )}
+                  </div>
+                  {(formError.includes("API_BUSY") ||
+                    formError.toLowerCase().includes("api") ||
+                    formError.toLowerCase().includes("busy")) && (
+                    <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={focusApiKeySetup}
+                        className="px-3.5 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 font-black text-xs transition"
+                      >
+                        Add Your Own Free API Key ?
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openGuideSection("api")}
+                        className="px-3.5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold text-xs transition"
+                      >
+                        Read 30-Sec Setup Guide
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -1263,7 +1346,66 @@ export default function Home() {
                     </div>
                   )}
                   {job.error && job.status !== "needs_confirmation" && (
-                    <p className="mt-3 text-sm text-red-400">{job.error}</p>
+                    <div className="mt-4 p-4 rounded-xl bg-red-950/40 border border-red-800/70 space-y-3">
+                      <p className="text-sm text-red-300">
+                        {job.error.replace("API_BUSY:", "").trim()}
+                      </p>
+                      {(job.error.includes("API_BUSY") ||
+                        job.error.toLowerCase().includes("busy") ||
+                        job.error.toLowerCase().includes("rate") ||
+                        !hasCustomKey) && (
+                        <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-3.5 space-y-2.5">
+                          <div className="text-xs font-black text-amber-400 uppercase tracking-wider">
+                            Quick Fix: Connect Your Free Personal AI Key (Takes 30 Seconds)
+                          </div>
+                          <ol className="text-xs text-zinc-300 space-y-1 list-decimal list-inside">
+                            <li>
+                              Get a free key from{" "}
+                              <a
+                                href="https://aistudio.google.com/apikey"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-amber-400 underline font-semibold"
+                              >
+                                Google AI Studio (Gemini)
+                              </a>{" "}
+                              or{" "}
+                              <a
+                                href="https://console.groq.com/keys"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-amber-400 underline font-semibold"
+                              >
+                                Groq Cloud
+                              </a>
+                              .
+                            </li>
+                            <li>
+                              Click <strong>Paste My API Key Now</strong> below and paste it into the API Key box.
+                            </li>
+                            <li>
+                              Click <strong>Generate Viral Shorts</strong> again (0 credits were deducted).
+                            </li>
+                          </ol>
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={focusApiKeySetup}
+                              className="px-3.5 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 font-black text-xs transition"
+                            >
+                              Paste My API Key Now ?
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openGuideSection("api")}
+                              className="px-3 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold text-xs transition"
+                            >
+                              Full Step-by-Step Guide
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   {/* Live Background Process Dropdown */}

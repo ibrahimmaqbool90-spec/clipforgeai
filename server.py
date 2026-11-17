@@ -300,8 +300,8 @@ def save_clip_to_cloud(
         )
         return public_url
     except Exception as e:
-        print(f"Cloud clip save skipped ({e})")
-        return None
+        print(f"Cloud clip save error: {e}")
+        return f"ERROR:{e}"
 
 
 
@@ -409,7 +409,7 @@ def render_selected_clips(
             cloud_url = save_clip_to_cloud(
                 user_id, user_plan, job_id, out_file, filename, clip_record
             )
-            if cloud_url:
+            if cloud_url and not str(cloud_url).startswith("ERROR:"):
                 clip_record["video_url"] = cloud_url
                 clip_record["saved_to_cloud"] = True
                 retention = (
@@ -419,9 +419,11 @@ def render_selected_clips(
                 )
                 add_log(
                     job_id,
-                    f"cloud [{idx}/{len(clips)}]: Backed up {retention} in user library.",
+                    f"cloud [{idx}/{len(clips)}]: Backed up {retention} in My Saved Clips.",
                 )
             else:
+                if str(cloud_url).startswith("ERROR:"):
+                    add_log(job_id, f"cloud warning: {str(cloud_url)[6:]}")
                 add_log(
                     job_id,
                     f"ffmpeg [{idx}/{len(clips)}]: Exported 540x960 H.264 MP4.",
@@ -604,6 +606,11 @@ def process_job(
             clean_err = (
                 "YouTube temporarily blocked automated fetching for this link. Switch"
                 " to the 'Upload MP4' tab above for 100% reliable clipping."
+            )
+        elif any(k in clean_err.lower() for k in ["429", "rate limit", "resource_exhausted", "quota", "busy", "overloaded", "api key", "unauthorized", "401", "403"]):
+            clean_err = (
+                "API_BUSY: Our shared AI server is currently busy or rate-limited. "
+                "Add your own free Google Gemini or Groq API key to continue instantly."
             )
         clean_err = f"{clean_err} (Clip quota automatically refunded)"
         jobs[job_id]["status"] = "failed"
@@ -823,6 +830,53 @@ def get_job_status(job_id: str):
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
     return jobs[job_id]
+
+
+@app.post("/api/save-clip")
+async def manual_save_clip(
+    request: Request,
+    authorization: str | None = Header(default=None),
+):
+    user = verify_supabase_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in first to save clips to your library.")
+    body = await request.json()
+    user_id = user["id"]
+    prof = get_normalized_profile(user_id)
+    user_plan = prof["plan"]
+
+    job_id = str(body.get("job_id") or "manual")
+    video_url = str(body.get("video_url") or "")
+    if video_url.startswith("http"):
+        return {"ok": True, "video_url": video_url, "already_saved": True}
+
+    rel_path = video_url.lstrip("/")
+    if rel_path.startswith("files/"):
+        local_mp4 = os.path.join(JOBS_DIR, rel_path[len("files/"):])
+    else:
+        raise HTTPException(status_code=400, detail="Invalid clip file path.")
+
+    if not os.path.exists(local_mp4):
+        raise HTTPException(status_code=404, detail="Local clip file expired; please re-generate while signed in.")
+
+    filename = os.path.basename(local_mp4)
+    res_url = save_clip_to_cloud(
+        user_id=user_id,
+        plan=user_plan,
+        job_id=job_id,
+        local_mp4_path=local_mp4,
+        filename=filename,
+        clip_meta={
+            "hook_banner": body.get("hook_banner", "VIRAL SHORT"),
+            "title": body.get("title", "short_clip"),
+            "story_arc": body.get("story_arc", ""),
+            "cuts": int(body.get("cuts") or 1),
+            "duration": float(body.get("duration") or 0),
+        },
+    )
+    if not res_url or str(res_url).startswith("ERROR:"):
+        raise HTTPException(status_code=500, detail=f"Could not save to cloud: {res_url}")
+    return {"ok": True, "video_url": res_url}
 
 
 @app.get("/api/my-clips")
