@@ -27,6 +27,11 @@ import {
   BookOpen,
   FolderSearch,
   HelpCircle,
+  Heart,
+  Trash2,
+  FolderPlus,
+  Search,
+  Clock,
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
@@ -46,6 +51,8 @@ interface ClipResult {
   duration: number;
   video_url: string;
   saved_to_cloud?: boolean;
+  is_favorite?: boolean;
+  folder_name?: string;
   social_meta?: {
     post_title: string;
     description: string;
@@ -434,6 +441,89 @@ export default function Home() {
 
   const [confirming, setConfirming] = useState(false);
   const [savingClipId, setSavingClipId] = useState<string | null>(null);
+  const [librarySearch, setLibrarySearch] = useState("");
+  const [libraryTab, setLibraryTab] = useState<"all" | "favorites">("all");
+  const [selectedFolder, setSelectedFolder] = useState<string>("ALL");
+  const [customFolders, setCustomFolders] = useState<string[]>([]);
+  const [newFolderInput, setNewFolderInput] = useState("");
+
+  useEffect(() => {
+    try {
+      const savedF = JSON.parse(localStorage.getItem("peakslicer_folders") || "[]");
+      if (Array.isArray(savedF)) setCustomFolders(savedF);
+    } catch {}
+  }, []);
+
+  const allFolders = Array.from(
+    new Set([
+      ...customFolders,
+      ...savedClips.map((c) => (c.folder_name || "").trim()).filter(Boolean),
+    ])
+  );
+
+  const handleCreateFolder = (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newFolderInput.trim();
+    if (!name) return;
+    if (!allFolders.includes(name)) {
+      const updated = [...customFolders, name];
+      setCustomFolders(updated);
+      localStorage.setItem("peakslicer_folders", JSON.stringify(updated));
+    }
+    setSelectedFolder(name);
+    setNewFolderInput("");
+  };
+
+  const handleToggleFavorite = async (clip: ClipResult) => {
+    if (!session) return;
+    const nextVal = !clip.is_favorite;
+    setSavedClips((prev) =>
+      prev.map((c) => (c.id === clip.id ? { ...c, is_favorite: nextVal } : c))
+    );
+    await fetch(`${API_BASE}/api/saved-clips/${clip.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ is_favorite: nextVal }),
+    });
+  };
+
+  const handleAssignFolder = async (clip: ClipResult, folderName: string) => {
+    if (!session) return;
+    setSavedClips((prev) =>
+      prev.map((c) => (c.id === clip.id ? { ...c, folder_name: folderName } : c))
+    );
+    await fetch(`${API_BASE}/api/saved-clips/${clip.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ folder_name: folderName }),
+    });
+  };
+
+  const handleDeleteSavedClip = async (clip: ClipResult) => {
+    if (!session) return;
+    setSavedClips((prev) => prev.filter((c) => c.id !== clip.id));
+    await fetch(`${API_BASE}/api/saved-clips/${clip.id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+  };
+
+  const formatTimeRemaining = (expiresAt?: string | null) => {
+    if (!expiresAt) return "Permanent backup";
+    const diffMs = new Date(expiresAt).getTime() - Date.now();
+    if (diffMs <= 0) return "Expiring soon";
+    const totalHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    return days > 0 ? `${days}d ${hours}h left` : `${hours}h left`;
+  };
+
   const [manuallySavedIds, setManuallySavedIds] = useState<Record<string, boolean>>({});
 
   const focusApiKeySetup = () => {
@@ -476,7 +566,11 @@ export default function Home() {
         }),
       });
       if (res.ok) {
+        const resData = await res.json().catch(() => ({}));
         setManuallySavedIds((prev) => ({ ...prev, [key]: true }));
+        if (resData.duplicate) {
+          alert("This clip is already in your Saved Clips library!");
+        }
         fetchUserLibrary(session);
       } else {
         const err = await res.json();
@@ -663,16 +757,16 @@ export default function Home() {
 
       <div className="max-w-5xl mx-auto px-6 py-12">
         {activeView === "library" && session ? (
-          /* Saved Clips Cloud Library View */
+          /* Saved Clips Cloud Library View with Search, Favorites, Folders & Expiry Timer */
           <section>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <div>
                 <h1 className="text-3xl font-black tracking-tight flex items-center gap-2.5">
                   <FolderHeart className="w-7 h-7 text-amber-400" />
                   My Saved Shorts Library
                 </h1>
                 <p className="text-sm text-zinc-400 mt-1">
-                  Signed in as {session.user.email} •{" "}
+                  Signed in as {session.user.email} ?{" "}
                   {profile?.backup_days
                     ? `Clips backed up for ${profile.backup_days} days on ${currentPlan.toUpperCase()} tier.`
                     : "Permanent cloud backup active on PRO MAX."}
@@ -681,10 +775,102 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setActiveView("create")}
-                className="px-4 py-2.5 rounded-xl bg-amber-400 text-zinc-950 font-black text-xs"
+                className="px-4 py-2.5 rounded-xl bg-amber-400 text-zinc-950 font-black text-xs shrink-0"
               >
                 + Generate New Shorts
               </button>
+            </div>
+
+            {/* Search, All vs Favorites Tabs & Folder Creation Bar */}
+            <div className="bg-zinc-900/70 border border-zinc-800 rounded-2xl p-4 mb-6 space-y-4">
+              <div className="flex flex-col md:flex-row gap-3 justify-between">
+                {/* Search Input */}
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={librarySearch}
+                    onChange={(e) => setLibrarySearch(e.target.value)}
+                    placeholder="Search saved clips by title, hook, or description..."
+                    className="w-full pl-10 pr-4 py-2 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-amber-400 focus:outline-none text-xs text-zinc-100 placeholder-zinc-500"
+                  />
+                </div>
+
+                {/* All vs Favorites Toggle */}
+                <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800 w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setLibraryTab("all")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      libraryTab === "all"
+                        ? "bg-amber-400 text-zinc-950"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    All Clips ({savedClips.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLibraryTab("favorites")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      libraryTab === "favorites"
+                        ? "bg-amber-400 text-zinc-950"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    <Heart className="w-3.5 h-3.5" />
+                    Favorites ({savedClips.filter((c) => c.is_favorite).length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Folders Filter Pills + Create New Folder */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-zinc-800/80">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFolder("ALL")}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                      selectedFolder === "ALL"
+                        ? "bg-zinc-800 text-amber-400 border border-amber-400/40"
+                        : "bg-zinc-950 text-zinc-400 border border-zinc-800 hover:text-zinc-200"
+                    }`}
+                  >
+                    All Folders
+                  </button>
+                  {allFolders.map((folder) => (
+                    <button
+                      key={folder}
+                      type="button"
+                      onClick={() => setSelectedFolder(folder)}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                        selectedFolder === folder
+                          ? "bg-zinc-800 text-amber-400 border border-amber-400/40"
+                          : "bg-zinc-950 text-zinc-400 border border-zinc-800 hover:text-zinc-200"
+                      }`}
+                    >
+                      ?? {folder}
+                    </button>
+                  ))}
+                </div>
+
+                <form onSubmit={handleCreateFolder} className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={newFolderInput}
+                    onChange={(e) => setNewFolderInput(e.target.value)}
+                    placeholder="New folder name..."
+                    className="px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 focus:border-amber-400 focus:outline-none text-xs text-zinc-100 placeholder-zinc-500 w-40"
+                  />
+                  <button
+                    type="submit"
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-bold text-xs transition"
+                  >
+                    <FolderPlus className="w-3.5 h-3.5" />
+                    Add Folder
+                  </button>
+                </form>
+              </div>
             </div>
 
             {loadingLibrary ? (
@@ -692,173 +878,138 @@ export default function Home() {
                 <Loader2 className="w-7 h-7 animate-spin text-amber-400 mb-3" />
                 Loading your saved clips...
               </div>
-            ) : savedClips.length === 0 ? (
-              <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-12 text-center">
-                <Film className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
-                <h3 className="font-bold text-lg text-zinc-200">
-                  No saved Shorts yet
-                </h3>
-                <p className="text-sm text-zinc-400 mt-1 mb-5">
-                  Upload an MP4 while signed in and your rendered Shorts will
-                  automatically appear here for future downloads.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setActiveView("create")}
-                  className="px-5 py-2.5 rounded-xl bg-amber-400 text-zinc-950 font-black text-xs"
-                >
-                  Create Your First Short
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {savedClips.map((clip) => (
-                  <div
-                    key={clip.id}
-                    className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col shadow-xl"
-                  >
-                    <div className="aspect-[9/16] bg-black relative">
-                      <video
-                        src={resolveMediaUrl(clip.video_url)}
-                        controls
-                        playsInline
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="p-4 flex-1 flex flex-col justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
-                          <span className="inline-block text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-amber-400/15 text-amber-400">
-                            {clip.hook_banner}
-                          </span>
-                          {clip.cuts && clip.cuts > 1 && (
-                            <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-400/15 text-emerald-400">
-                              {clip.cuts} Cuts
-                            </span>
-                          )}
-                        </div>
-                        <h3 className="font-bold text-sm text-zinc-100 line-clamp-1">
-                          {clip.title}
-                        </h3>
-                        <p className="text-xs text-zinc-400 mt-1 line-clamp-2">
-                          {clip.story_arc}
-                        </p>
-                      </div>
-                                            {/* Shorts / Reels Post Details Dropdown */}
-                      <div className="border-t border-zinc-800/80 pt-2">
-                        <button
-                          type="button"
-                          onClick={() => toggleClipMeta(clip.id)}
-                          className="w-full flex items-center justify-between text-[11px] font-bold text-amber-400 hover:text-amber-300 py-1 transition"
-                        >
-                          <span>Shorts / Reels Title & Caption</span>
-                          {openMetaIds[String(clip.id)] ? (
-                            <ChevronUp className="w-3.5 h-3.5" />
-                          ) : (
-                            <ChevronDown className="w-3.5 h-3.5" />
-                          )}
-                        </button>
+            ) : (() => {
+              const filteredClips = savedClips.filter((c) => {
+                if (libraryTab === "favorites" && !c.is_favorite) return false;
+                if (selectedFolder !== "ALL" && (c.folder_name || "") !== selectedFolder)
+                  return false;
+                if (librarySearch.trim()) {
+                  const q = librarySearch.toLowerCase();
+                  const hay = `${c.title} ${c.hook_banner} ${c.story_arc} ${c.folder_name || ""}`.toLowerCase();
+                  if (!hay.includes(q)) return false;
+                }
+                return true;
+              });
 
-                        {openMetaIds[String(clip.id)] && (() => {
-                          const fallbackTitle = `${clip.title.replace(/[_-]+/g, " ")} (${clip.hook_banner})`;
-                          const fallbackTags = "#shorts #reels #viral #fyp";
-                          const fallbackDesc = `${clip.hook_banner} ??\n${clip.story_arc}\n\n${fallbackTags}`;
-                          const fallbackPin = "Wait till the end ?? Rate this 1-10 in the comments!";
-                          const meta = clip.social_meta || {
-                            post_title: fallbackTitle,
-                            description: fallbackDesc,
-                            hashtags: fallbackTags,
-                            pinned_comment: fallbackPin,
-                          };
-                          return (
-                            <div className="mt-2 space-y-2.5 bg-zinc-950/90 border border-zinc-800 rounded-xl p-2.5 text-[11px]">
-                              <div>
-                                <div className="flex items-center justify-between text-zinc-400 font-semibold mb-0.5">
-                                  <span>Title</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => copyMetaText(`${clip.id}-title`, meta.post_title)}
-                                    className="text-amber-400 hover:underline font-bold"
-                                  >
-                                    {copiedKey === `${clip.id}-title` ? "Copied!" : "Copy"}
-                                  </button>
-                                </div>
-                                <p className="text-zinc-200 bg-zinc-900 px-2 py-1.5 rounded border border-zinc-800/80 select-all">
-                                  {meta.post_title}
-                                </p>
-                              </div>
-
-                              <div>
-                                <div className="flex items-center justify-between text-zinc-400 font-semibold mb-0.5">
-                                  <span>Description & Tags</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => copyMetaText(`${clip.id}-desc`, meta.description)}
-                                    className="text-amber-400 hover:underline font-bold"
-                                  >
-                                    {copiedKey === `${clip.id}-desc` ? "Copied!" : "Copy"}
-                                  </button>
-                                </div>
-                                <pre className="whitespace-pre-wrap font-sans text-zinc-300 bg-zinc-900 px-2 py-1.5 rounded border border-zinc-800/80 max-h-24 overflow-y-auto select-all">
-                                  {meta.description}
-                                </pre>
-                              </div>
-
-                              <div>
-                                <div className="flex items-center justify-between text-zinc-400 font-semibold mb-0.5">
-                                  <span>Hashtags</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => copyMetaText(`${clip.id}-tags`, meta.hashtags)}
-                                    className="text-amber-400 hover:underline font-bold"
-                                  >
-                                    {copiedKey === `${clip.id}-tags` ? "Copied!" : "Copy"}
-                                  </button>
-                                </div>
-                                <p className="text-amber-300/90 bg-zinc-900 px-2 py-1 rounded border border-zinc-800/80 select-all">
-                                  {meta.hashtags}
-                                </p>
-                              </div>
-
-                              <div>
-                                <div className="flex items-center justify-between text-zinc-400 font-semibold mb-0.5">
-                                  <span>Pinned Comment</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => copyMetaText(`${clip.id}-pin`, meta.pinned_comment)}
-                                    className="text-amber-400 hover:underline font-bold"
-                                  >
-                                    {copiedKey === `${clip.id}-pin` ? "Copied!" : "Copy"}
-                                  </button>
-                                </div>
-                                <p className="text-zinc-300 bg-zinc-900 px-2 py-1 rounded border border-zinc-800/80 select-all">
-                                  {meta.pinned_comment}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                      <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between">
-                        <span className="text-xs font-mono text-zinc-500">
-                          {clip.duration}s
-                        </span>
-                        <a
-                          href={resolveMediaUrl(clip.video_url)}
-                          download={`${clip.title}.mp4`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-amber-400 hover:text-zinc-950 transition"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          Download
-                        </a>
-                      </div>
-                    </div>
+              if (filteredClips.length === 0) {
+                return (
+                  <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-12 text-center">
+                    <Film className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
+                    <h3 className="font-bold text-lg text-zinc-200">
+                      {savedClips.length === 0
+                        ? "No saved Shorts yet"
+                        : "No clips match this filter"}
+                    </h3>
+                    <p className="text-sm text-zinc-400 mt-1 mb-5">
+                      {savedClips.length === 0
+                        ? "Click Save on any generated Short to store it here."
+                        : "Try clearing your search or switching folders/tabs."}
+                    </p>
                   </div>
-                ))}
-              </div>
-            )}
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {filteredClips.map((clip) => (
+                    <div
+                      key={clip.id}
+                      className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col shadow-xl"
+                    >
+                      <div className="aspect-[9/16] bg-black relative">
+                        <video
+                          src={resolveMediaUrl(clip.video_url)}
+                          controls
+                          playsInline
+                          className="w-full h-full object-cover"
+                        />
+                        {/* Top-left Expiration Countdown Badge */}
+                        <span className="absolute top-2.5 left-2.5 flex items-center gap-1 px-2 py-1 rounded-lg bg-black/80 backdrop-blur text-[10px] font-bold text-amber-300 border border-zinc-700/80">
+                          <Clock className="w-3 h-3" />
+                          {formatTimeRemaining(clip.expires_at)}
+                        </span>
+                        {/* Top-right Favorite & Delete Buttons */}
+                        <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleFavorite(clip)}
+                            className={`p-1.5 rounded-lg backdrop-blur border transition ${
+                              clip.is_favorite
+                                ? "bg-rose-500/90 border-rose-400 text-white"
+                                : "bg-black/75 border-zinc-700 text-zinc-300 hover:text-rose-400"
+                            }`}
+                            title={clip.is_favorite ? "Remove from Favorites" : "Add to Favorites"}
+                          >
+                            <Heart className="w-3.5 h-3.5 fill-current" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSavedClip(clip)}
+                            className="p-1.5 rounded-lg bg-black/75 backdrop-blur border border-zinc-700 text-zinc-300 hover:bg-red-600 hover:border-red-500 hover:text-white transition"
+                            title="Delete Saved Clip"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="p-4 flex-1 flex flex-col justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+                            <span className="inline-block text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-amber-400/15 text-amber-400">
+                              {clip.hook_banner}
+                            </span>
+                            {clip.cuts && clip.cuts > 1 && (
+                              <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-400/15 text-emerald-400">
+                                {clip.cuts} Cuts
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="font-bold text-sm text-zinc-100 line-clamp-1">
+                            {clip.title}
+                          </h3>
+                          <p className="text-xs text-zinc-400 mt-1 line-clamp-2">
+                            {clip.story_arc}
+                          </p>
+                        </div>
+
+                        {/* Folder Assignment Selector */}
+                        <div>
+                          <select
+                            value={clip.folder_name || ""}
+                            onChange={(e) => handleAssignFolder(clip, e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-[11px] text-zinc-300 focus:border-amber-400 focus:outline-none"
+                          >
+                            <option value="">No Folder (Unorganized)</option>
+                            {allFolders.map((f) => (
+                              <option key={f} value={f}>
+                                ?? {f}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between">
+                          <span className="text-xs font-mono text-zinc-500">
+                            {clip.duration}s
+                          </span>
+                          <a
+                            href={resolveMediaUrl(clip.video_url)}
+                            download={`${clip.title}.mp4`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-amber-400 hover:text-zinc-950 transition"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            Download
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </section>
         ) : (
           /* Main Creator Studio View */

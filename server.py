@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import threading
+import urllib.parse
 import urllib.request
 import uuid
 from clip import (
@@ -841,6 +842,21 @@ async def manual_save_clip(
     if not os.path.exists(local_mp4):
         raise HTTPException(status_code=404, detail="Local clip file expired; please re-generate while signed in.")
 
+    clip_title = str(body.get("title", "short_clip")).strip()
+    clip_dur = float(body.get("duration") or 0)
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Duplicate check: skip if an active clip with the same title & duration already exists
+    existing = _supabase_request(
+        f"/rest/v1/saved_clips?user_id=eq.{user_id}"
+        f"&title=eq.{urllib.parse.quote(clip_title)}"
+        f"&duration=eq.{clip_dur}"
+        f"&or=(expires_at.is.null,expires_at.gt.{now_iso})"
+        "&select=id,video_url"
+    ) or []
+    if existing:
+        return {"ok": True, "video_url": existing[0]["video_url"], "duplicate": True}
+
     filename = os.path.basename(local_mp4)
     res_url = save_clip_to_cloud(
         user_id=user_id,
@@ -850,15 +866,76 @@ async def manual_save_clip(
         filename=filename,
         clip_meta={
             "hook_banner": body.get("hook_banner", "VIRAL SHORT"),
-            "title": body.get("title", "short_clip"),
+            "title": clip_title,
             "story_arc": body.get("story_arc", ""),
             "cuts": int(body.get("cuts") or 1),
-            "duration": float(body.get("duration") or 0),
+            "duration": clip_dur,
         },
     )
     if not res_url or str(res_url).startswith("ERROR:"):
         raise HTTPException(status_code=500, detail=f"Could not save to cloud: {res_url}")
     return {"ok": True, "video_url": res_url}
+
+
+@app.patch("/api/saved-clips/{clip_id}")
+async def update_saved_clip(
+    clip_id: str,
+    request: Request,
+    authorization: str | None = Header(default=None),
+):
+    user = verify_supabase_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required.")
+    body = await request.json()
+    updates = {}
+    if "is_favorite" in body:
+        updates["is_favorite"] = bool(body["is_favorite"])
+    if "folder_name" in body:
+        updates["folder_name"] = str(body["folder_name"] or "").strip()[:40]
+    if not updates:
+        return {"ok": True}
+
+    _supabase_request(
+        f"/rest/v1/saved_clips?id=eq.{clip_id}&user_id=eq.{user['id']}",
+        method="PATCH",
+        body=updates,
+        extra_headers={"Prefer": "return=minimal"},
+    )
+    return {"ok": True}
+
+
+@app.delete("/api/saved-clips/{clip_id}")
+def delete_saved_clip(
+    clip_id: str,
+    authorization: str | None = Header(default=None),
+):
+    user = verify_supabase_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required.")
+    user_id = user["id"]
+
+    rows = _supabase_request(
+        f"/rest/v1/saved_clips?id=eq.{clip_id}&user_id=eq.{user_id}&select=id,video_url"
+    ) or []
+    if rows:
+        v_url = rows[0].get("video_url", "")
+        marker = "/storage/v1/object/public/shorts/"
+        if marker in v_url:
+            storage_path = v_url.split(marker, 1)[1]
+            try:
+                _supabase_request(
+                    f"/storage/v1/object/shorts/{storage_path}",
+                    method="DELETE",
+                )
+            except Exception:
+                pass
+
+    _supabase_request(
+        f"/rest/v1/saved_clips?id=eq.{clip_id}&user_id=eq.{user_id}",
+        method="DELETE",
+        extra_headers={"Prefer": "return=minimal"},
+    )
+    return {"ok": True}
 
 
 @app.get("/api/my-clips")
