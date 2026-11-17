@@ -777,7 +777,7 @@ def map_words_to_stitched_timeline(transcript_segments, clip_segments):
     for w in mapped:
         txt = w["word"]
         if merged and (
-            txt.startswith(",") or txt.startswith(".") or txt.lstrip(",.").isdigit()
+            txt.startswith(",") or txt.startswith(".")
         ):
             merged[-1]["word"] += txt
             merged[-1]["end"] = w["end"]
@@ -787,6 +787,41 @@ def map_words_to_stitched_timeline(transcript_segments, clip_segments):
     for w in merged:
         w["word"] = re.sub(r"[,.;:]+$", "", w["word"]).upper()
     return [w for w in merged if w["word"]], offset
+
+
+def snap_segments_to_sentence_end(transcript_segments, clip_segments, max_video_dur=None):
+    if not clip_segments:
+        return clip_segments
+    all_words = []
+    for seg in transcript_segments:
+        for w in seg.get("words", []):
+            all_words.append(w)
+    if not all_words:
+        return clip_segments
+
+    last_seg = clip_segments[-1]
+    orig_end = float(last_seg.end)
+    snapped_end = orig_end
+
+    # Look up to +3.5s after orig_end for a sentence-ending word (., !, ?)
+    for w in all_words:
+        w_end = float(w.get("end", 0))
+        if w_end < orig_end - 0.15:
+            continue
+        if w_end > orig_end + 3.5:
+            break
+        snapped_end = w_end
+        token = w.get("word", "").strip()
+        if token.endswith((".", "!", "?")):
+            break
+
+    # Add 0.40s natural breathing room so final word is never clipped
+    final_end = round(snapped_end + 0.40, 3)
+    if max_video_dur and max_video_dur > 0:
+        final_end = min(final_end, round(float(max_video_dur), 3))
+    if final_end > last_seg.start + 1.0:
+        last_seg.end = final_end
+    return clip_segments
 
 
 def build_capcut_ass(
@@ -820,6 +855,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         f"{{\\t(0,120,\\fscx108\\fscy108)\\t(120,240,\\fscx100\\fscy100)}}{clean_hook}"
     )
 
+    clip_segments = snap_segments_to_sentence_end(transcript_segments, clip_segments)
     words, total_dur = map_words_to_stitched_timeline(
         transcript_segments, clip_segments
     )
@@ -870,11 +906,15 @@ def render_viral_short(video_path, clip_segments, ass_path, out_path):
     else:
         stitch_chain = f"{''.join(concat_inputs)}concat=n={len(clip_segments)}:v=1:a=1[rawv][outa];"
 
-    # Ultra-low-RAM 540x960 vertical canvas (no split/boxblur memory spike)
+    # Ultra-low-RAM 540x960 blurred background fill (68x120 proxy gblur uses <200KB RAM)
     filter_complex = (
         stitch_chain
-        + "[rawv]scale=540:960:force_original_aspect_ratio=decrease,"
-        "pad=540:960:(ow-iw)/2:(oh-ih)/2:black[v];"
+        + "[rawv]split=2[bg_in][fg_in];"
+        "[bg_in]scale=68:120:force_original_aspect_ratio=increase,"
+        "crop=68:120,gblur=sigma=8,eq=brightness=-0.12:saturation=1.15,"
+        "scale=540:960:flags=bilinear[bg];"
+        "[fg_in]scale=540:960:force_original_aspect_ratio=decrease[fg];"
+        "[bg][fg]overlay=(W-w)/2:(H-h)/2[v];"
         f"[v]ass={safe_ass}[outv]"
     )
 
