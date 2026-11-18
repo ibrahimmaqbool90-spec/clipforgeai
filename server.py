@@ -583,6 +583,7 @@ def process_job(
             user_id=user_id,
             user_plan=user_plan,
             client_ip=client_ip,
+            caption_style=caption_style,
         )
 
     except Exception as e:
