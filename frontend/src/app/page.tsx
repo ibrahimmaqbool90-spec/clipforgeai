@@ -122,6 +122,9 @@ export default function Home() {
   const [editHookPosition, setEditHookPosition] = useState<string>("top");
   const [editHookCasing, setEditHookCasing] = useState<string>("upper");
   const [rerenderingClipId, setRerenderingClipId] = useState<string | null>(null);
+  const [batchHookAppend, setBatchHookAppend] = useState<string>("");
+  const [batchHookPlacement, setBatchHookPlacement] = useState<"suffix" | "prefix">("suffix");
+  const [batchAppendingHooks, setBatchAppendingHooks] = useState<boolean>(false);
 
   const applyCaptionPreset = (p: string) => {
     setCaptionPreset(p);
@@ -2284,6 +2287,82 @@ export default function Home() {
                     </span>
                   )}
                 </div>
+                {job?.status === "completed" && job.clips && job.clips.length > 0 && (
+                  <div className="mb-4 p-3.5 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col md:flex-row md:items-center gap-2.5">
+                    <div className="text-xs font-bold text-amber-300 shrink-0">
+                      Append to All Clip Banners:
+                    </div>
+                    <input
+                      type="text"
+                      value={batchHookAppend}
+                      onChange={(e) => setBatchHookAppend(e.target.value)}
+                      maxLength={30}
+                      placeholder="e.g. | GTA 6 or PART 1:"
+                      className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-500 focus:border-amber-400 focus:outline-none"
+                    />
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setBatchHookPlacement((p) => (p === "suffix" ? "prefix" : "suffix"))}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-zinc-950 text-zinc-300 border border-zinc-700 hover:border-amber-400 transition"
+                      >
+                        {batchHookPlacement === "suffix" ? "At End (Hook + Text)" : "At Start (Text + Hook)"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={batchAppendingHooks || !batchHookAppend.trim()}
+                        onClick={async () => {
+                          const activeJobId = job.job_id || jobId;
+                          if (!activeJobId || !batchHookAppend.trim()) return;
+                          try {
+                            setBatchAppendingHooks(true);
+                            const res = await fetch(resolveMediaUrl("/api/clips/batch-append-hook"), {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                job_id: activeJobId,
+                                append_text: batchHookAppend.trim(),
+                                placement: batchHookPlacement,
+                              }),
+                            });
+                            const out = await res.json();
+                            if (!res.ok) {
+                              alert(out.detail || "Failed to append to all banners");
+                            } else if (Array.isArray(out.updated)) {
+                              const byId = new Map(out.updated.map((u: any) => [String(u.id), u]));
+                              setJob((prev: any) =>
+                                prev && prev.clips
+                                  ? {
+                                      ...prev,
+                                      clips: prev.clips.map((c: any) => {
+                                        const hit: any = byId.get(String(c.id));
+                                        return hit
+                                          ? {
+                                              ...c,
+                                              hook_banner: hit.hook_banner,
+                                              video_url: hit.video_url,
+                                              caption_style: hit.caption_style,
+                                            }
+                                          : c;
+                                      }),
+                                    }
+                                  : prev
+                              );
+                              setBatchHookAppend("");
+                            }
+                          } catch (err) {
+                            alert("Network error while updating all banners.");
+                          } finally {
+                            setBatchAppendingHooks(false);
+                          }
+                        }}
+                        className="px-3.5 py-1.5 rounded-lg text-xs font-black bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-zinc-950 transition"
+                      >
+                        {batchAppendingHooks ? "Updating All Clips..." : "Append to All"}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                   {job.clips.map((clip) => (
                     <div
@@ -2317,6 +2396,180 @@ export default function Home() {
                             {clip.story_arc}
                           </p>
                         </div>
+                        {(clip.job_id || jobId) && (
+                          <div className="pt-2 border-t border-zinc-800/80">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const cid = String(clip.id);
+                                if (editingHookClipId === cid) {
+                                  setEditingHookClipId(null);
+                                } else {
+                                  const st = clip.caption_style || {};
+                                  setEditingHookClipId(cid);
+                                  setEditHookShow(st.showHook !== false);
+                                  setEditHookText(clip.hook_banner || "");
+                                  setEditHookTheme(st.hookTheme || "gold");
+                                  setEditHookSize(st.hookSize || "md");
+                                  setEditHookPosition(st.hookPosition || "top");
+                                  setEditHookCasing(st.hookCasing || "upper");
+                                }
+                              }}
+                              className="w-full py-1.5 px-2.5 rounded-lg text-xs font-bold bg-zinc-950 hover:bg-zinc-800 text-amber-300 border border-zinc-800 flex items-center justify-between transition"
+                            >
+                              <span>Edit Top Hook Banner</span>
+                              <span>{editingHookClipId === String(clip.id) ? "[-]" : "[+]"}</span>
+                            </button>
+
+                            {editingHookClipId === String(clip.id) && (
+                              <div className="mt-2 p-2.5 rounded-lg bg-zinc-950/95 border border-zinc-800 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-bold text-zinc-400">Show Hook Banner</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditHookShow((v) => !v)}
+                                    className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                                      editHookShow ? "bg-amber-400 text-zinc-950" : "bg-zinc-800 text-zinc-400"
+                                    }`}
+                                  >
+                                    {editHookShow ? "ON" : "OFF"}
+                                  </button>
+                                </div>
+
+                                {editHookShow && (
+                                  <>
+                                    <input
+                                      type="text"
+                                      value={editHookText}
+                                      onChange={(e) => setEditHookText(e.target.value)}
+                                      maxLength={45}
+                                      placeholder="Enter top hook text..."
+                                      className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-100 focus:border-amber-400 focus:outline-none"
+                                    />
+                                    <div className="flex flex-wrap gap-1">
+                                      {[
+                                        { id: "gold", label: "Gold" },
+                                        { id: "red", label: "Red" },
+                                        { id: "cyan", label: "Cyan" },
+                                        { id: "white", label: "White" },
+                                        { id: "minimal", label: "Clean" },
+                                      ].map((t) => (
+                                        <button
+                                          key={t.id}
+                                          type="button"
+                                          onClick={() => setEditHookTheme(t.id)}
+                                          className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                            editHookTheme === t.id
+                                              ? "bg-amber-400 text-zinc-950 border-amber-400"
+                                              : "bg-zinc-900 text-zinc-300 border-zinc-800"
+                                          }`}
+                                        >
+                                          {t.label}
+                                        </button>
+                                      ))}
+                                    </div>
+                                    <div className="flex gap-1">
+                                      {[
+                                        { id: "sm", label: "Small" },
+                                        { id: "md", label: "Med" },
+                                        { id: "lg", label: "Large" },
+                                      ].map((s) => (
+                                        <button
+                                          key={s.id}
+                                          type="button"
+                                          onClick={() => setEditHookSize(s.id)}
+                                          className={`flex-1 py-0.5 rounded text-[10px] font-bold border ${
+                                            editHookSize === s.id
+                                              ? "bg-amber-400 text-zinc-950 border-amber-400"
+                                              : "bg-zinc-900 text-zinc-300 border-zinc-800"
+                                          }`}
+                                        >
+                                          {s.label}
+                                        </button>
+                                      ))}
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setEditHookPosition((p) => (p === "top" ? "above_video" : "top"))
+                                        }
+                                        className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-900 text-zinc-200 border border-zinc-700"
+                                      >
+                                        {editHookPosition === "top" ? "Top" : "Near Vid"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setEditHookCasing((c) => (c === "upper" ? "title" : "upper"))
+                                        }
+                                        className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-900 text-zinc-200 border border-zinc-700"
+                                      >
+                                        {editHookCasing === "upper" ? "AA" : "Aa"}
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+
+                                <button
+                                  type="button"
+                                  disabled={rerenderingClipId === String(clip.id)}
+                                  onClick={async () => {
+                                    const activeJobId = clip.job_id || jobId;
+                                    try {
+                                      setRerenderingClipId(String(clip.id));
+                                      const res = await fetch(resolveMediaUrl("/api/clips/rerender-hook"), {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({
+                                          job_id: activeJobId,
+                                          clip_id: Number(clip.id),
+                                          show_hook: editHookShow,
+                                          hook_text: editHookText,
+                                          hook_theme: editHookTheme,
+                                          hook_size: editHookSize,
+                                          hook_position: editHookPosition,
+                                          hook_casing: editHookCasing,
+                                        }),
+                                      });
+                                      const out = await res.json();
+                                      if (!res.ok) {
+                                        alert(out.detail || "Failed to update hook banner");
+                                      } else {
+                                        setJob((prev: any) =>
+                                          prev && prev.clips
+                                            ? {
+                                                ...prev,
+                                                clips: prev.clips.map((item: any) =>
+                                                  String(item.id) === String(clip.id)
+                                                    ? {
+                                                        ...item,
+                                                        hook_banner: out.hook_banner,
+                                                        video_url: out.video_url,
+                                                        caption_style: out.caption_style,
+                                                      }
+                                                    : item
+                                                ),
+                                              }
+                                            : prev
+                                        );
+                                        setEditingHookClipId(null);
+                                      }
+                                    } catch (err) {
+                                      alert("Network error while re-rendering hook banner.");
+                                    } finally {
+                                      setRerenderingClipId(null);
+                                    }
+                                  }}
+                                  className="w-full py-1.5 rounded bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-zinc-950 font-black text-xs transition"
+                                >
+                                  {rerenderingClipId === String(clip.id)
+                                    ? "Updating Video (~2s)..."
+                                    : "Apply & Re-render Clip"}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                                               {/* Shorts / Reels Post Details Dropdown */}
                       <div className="border-t border-zinc-800/80 pt-2">
                         <button
