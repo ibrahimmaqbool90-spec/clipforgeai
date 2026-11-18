@@ -1522,7 +1522,7 @@ export default function Home() {
                                     </div>
                                   </>
                                 )}
-                                <button type="button" disabled={rerenderingClipId === String(clip.id)} onClick={async () => { try { setRerenderingClipId(String(clip.id)); const res = await fetch(resolveMediaUrl("/api/clips/rerender-hook"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: clip.job_id || clip.video_url?.match(/\/files\/([^/]+)\//)?.[1], clip_id: Number(String(clip.id).replace(/\D/g, '')) || 1, show_hook: editHookShow, hook_text: editHookText, hook_theme: editHookTheme, hook_size: editHookSize, hook_position: editHookPosition, hook_casing: editHookCasing }) }); const out = await res.json(); if (!res.ok) { alert(out.detail || "Failed to update hook banner"); } else { setSavedClips((prev) => prev.map((item) => String(item.id) === String(clip.id) ? { ...item, hook_banner: out.hook_banner, video_url: out.video_url, caption_style: out.caption_style } : item)); setEditingHookClipId(null); } } catch (err) { alert("Network error while re-rendering hook banner."); } finally { setRerenderingClipId(null); } }} className="w-full py-1.5 rounded bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-zinc-950 font-black text-xs transition">
+                                <button type="button" disabled={rerenderingClipId === String(clip.id)} onClick={async () => { try { setRerenderingClipId(String(clip.id)); const res = await fetch(resolveMediaUrl("/api/clips/rerender-hook"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: clip.job_id || clip.video_url?.match(/\/files\/([^/]+)\//)?.[1], clip_id: Number(String(clip.id).replace(/\D/g, '')) || 1, show_hook: editHookShow, hook_text: editHookText, hook_theme: editHookTheme, hook_size: editHookSize, hook_position: editHookPosition, hook_casing: editHookCasing }) }); const out = await res.json(); if (!res.ok) { alert(typeof out.detail === "string" ? out.detail : JSON.stringify(out.detail || "Failed to update hook banner")); } else { setSavedClips((prev) => prev.map((item) => String(item.id) === String(clip.id) ? { ...item, hook_banner: out.hook_banner, video_url: out.video_url, caption_style: out.caption_style } : item)); setEditingHookClipId(null); } } catch (err) { alert("Network error while re-rendering hook banner."); } finally { setRerenderingClipId(null); } }} className="w-full py-1.5 rounded bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-zinc-950 font-black text-xs transition">
                                   {rerenderingClipId === String(clip.id) ? "Updating Video (~2s)..." : "Apply & Re-render Clip"}
                                 </button>
                               </div>
@@ -2764,7 +2764,7 @@ export default function Home() {
                                       });
                                       const out = await res.json();
                                       if (!res.ok) {
-                                        alert(out.detail || "Failed to update hook banner");
+                                        alert(typeof out.detail === "string" ? out.detail : JSON.stringify(out.detail || "Failed to update hook banner"));
                                       } else {
                                         setJob((prev: any) =>
                                           prev && prev.clips
