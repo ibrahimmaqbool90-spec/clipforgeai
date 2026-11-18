@@ -1095,7 +1095,42 @@ export default function Home() {
                           )
                         );
                         if (jobIds.length === 0) {
-                          alert("No active render sessions found for these clips.");
+                          try {
+                            setBatchAppendingHooks(true);
+                            const res = await fetch(resolveMediaUrl("/api/clips/batch-append-hook"), {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                append_text: batchHookAppend.trim(),
+                                placement: batchHookPlacement,
+                                permanent_clips: visible.map((c: any) => ({
+                                  id: String(c.id),
+                                  video_url: resolveMediaUrl(c.video_url),
+                                  hook_banner: c.hook_banner || "",
+                                  caption_style: c.caption_style || {},
+                                })),
+                              }),
+                            });
+                            const out = await res.json();
+                            if (!res.ok) {
+                              alert(out.detail || "Failed to update permanent clip banners");
+                            } else if (Array.isArray(out.updated)) {
+                              const byId = new Map(out.updated.map((u: any) => [String(u.id), u]));
+                              setSavedClips((prev) =>
+                                prev.map((item) => {
+                                  const hit: any = byId.get(String(item.id));
+                                  return hit
+                                    ? { ...item, hook_banner: hit.hook_banner, video_url: hit.video_url, caption_style: hit.caption_style }
+                                    : item;
+                                })
+                              );
+                              setBatchHookAppend("");
+                            }
+                          } catch (err) {
+                            alert("Network error while updating permanent banners.");
+                          } finally {
+                            setBatchAppendingHooks(false);
+                          }
                           return;
                         }
                         try {
