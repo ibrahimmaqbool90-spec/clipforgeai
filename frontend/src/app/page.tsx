@@ -1212,11 +1212,18 @@ export default function Home() {
                                 : prev
                             );
                             for (const [cid, snap] of entries) {
-                              if (supabase && session?.user) {
-                                await supabase
-                                  .from("saved_clips")
-                                  .update({ hook_banner: snap.hook_banner, video_url: snap.video_url })
-                                  .eq("id", cid);
+                              const sbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+                              const sbKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+                              if (sbUrl && sbKey && session?.access_token) {
+                                await fetch(`${sbUrl}/rest/v1/saved_clips?id=eq.${encodeURIComponent(cid)}`, {
+                                  method: "PATCH",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                    apikey: sbKey,
+                                    Authorization: `Bearer ${session.access_token}`,
+                                  },
+                                  body: JSON.stringify({ hook_banner: snap.hook_banner, video_url: snap.video_url }),
+                                });
                               }
                             }
                             setHookUndoMap({});
@@ -1233,11 +1240,18 @@ export default function Home() {
                               const current =
                                 savedClips.find((x) => String(x.id) === cid) ||
                                 job?.clips?.find((x: any) => String(x.id) === cid);
-                              if (current && supabase && session?.user) {
-                                await supabase
-                                  .from("saved_clips")
-                                  .update({ hook_banner: current.hook_banner, video_url: current.video_url })
-                                  .eq("id", cid);
+                              const sbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+                              const sbKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+                              if (current && sbUrl && sbKey && session?.access_token) {
+                                await fetch(`${sbUrl}/rest/v1/saved_clips?id=eq.${encodeURIComponent(cid)}`, {
+                                  method: "PATCH",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                    apikey: sbKey,
+                                    Authorization: `Bearer ${session.access_token}`,
+                                  },
+                                  body: JSON.stringify({ hook_banner: current.hook_banner, video_url: current.video_url }),
+                                });
                               }
                             }
                             setHookUndoMap({});
