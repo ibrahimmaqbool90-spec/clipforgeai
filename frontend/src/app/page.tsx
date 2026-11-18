@@ -114,14 +114,14 @@ export default function Home() {
   const [captionHookSize, setCaptionHookSize] = useState<string>("md");
   const [captionHookPosition, setCaptionHookPosition] = useState<string>("top");
   const [captionHookCasing, setCaptionHookCasing] = useState<string>("upper");
-  const [editingHookClipId, setEditingHookClipId] = useState<number | null>(null);
+  const [editingHookClipId, setEditingHookClipId] = useState<string | null>(null);
   const [editHookShow, setEditHookShow] = useState<boolean>(true);
   const [editHookText, setEditHookText] = useState<string>("");
   const [editHookTheme, setEditHookTheme] = useState<string>("gold");
   const [editHookSize, setEditHookSize] = useState<string>("md");
   const [editHookPosition, setEditHookPosition] = useState<string>("top");
   const [editHookCasing, setEditHookCasing] = useState<string>("upper");
-  const [rerenderingClipId, setRerenderingClipId] = useState<number | null>(null);
+  const [rerenderingClipId, setRerenderingClipId] = useState<string | null>(null);
 
   const applyCaptionPreset = (p: string) => {
     setCaptionPreset(p);
@@ -1284,11 +1284,11 @@ export default function Home() {
 
                         {clip.job_id && (
                           <div className="pt-2 border-t border-zinc-800/80">
-                            <button type="button" onClick={() => { if (editingHookClipId === clip.id) { setEditingHookClipId(null); } else { const st = clip.caption_style || {}; setEditingHookClipId(clip.id); setEditHookShow(st.showHook !== false); setEditHookText(clip.hook_banner || ""); setEditHookTheme(st.hookTheme || "gold"); setEditHookSize(st.hookSize || "md"); setEditHookPosition(st.hookPosition || "top"); setEditHookCasing(st.hookCasing || "upper"); } }} className="w-full py-1.5 px-2.5 rounded-lg text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-800 flex items-center justify-between transition">
+                            <button type="button" onClick={() => { if (editingHookClipId === String(clip.id)) { setEditingHookClipId(null); } else { const st = clip.caption_style || {}; setEditingHookClipId(String(clip.id)); setEditHookShow(st.showHook !== false); setEditHookText(clip.hook_banner || ""); setEditHookTheme(st.hookTheme || "gold"); setEditHookSize(st.hookSize || "md"); setEditHookPosition(st.hookPosition || "top"); setEditHookCasing(st.hookCasing || "upper"); } }} className="w-full py-1.5 px-2.5 rounded-lg text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-800 flex items-center justify-between transition">
                               <span>Edit Top Hook Banner</span>
-                              <span>{editingHookClipId === clip.id ? "[-]" : "[+]"}</span>
+                              <span>{editingHookClipId === String(clip.id) ? "[-]" : "[+]"}</span>
                             </button>
-                            {editingHookClipId === clip.id && (
+                            {editingHookClipId === String(clip.id) && (
                               <div className="mt-2 p-2.5 rounded-lg bg-zinc-950/90 border border-zinc-800 space-y-2">
                                 <div className="flex items-center justify-between">
                                   <span className="text-[11px] font-bold text-zinc-400">Show Hook Banner</span>
@@ -1311,8 +1311,8 @@ export default function Home() {
                                     </div>
                                   </>
                                 )}
-                                <button type="button" disabled={rerenderingClipId === clip.id} onClick={async () => { try { setRerenderingClipId(clip.id); const res = await fetch(resolveMediaUrl("/api/clips/rerender-hook"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: clip.job_id, clip_id: clip.id, show_hook: editHookShow, hook_text: editHookText, hook_theme: editHookTheme, hook_size: editHookSize, hook_position: editHookPosition, hook_casing: editHookCasing }) }); const out = await res.json(); if (!res.ok) { alert(out.detail || "Failed to update hook banner"); } else { setClips((prev) => prev.map((item) => item.id === clip.id ? { ...item, hook_banner: out.hook_banner, video_url: out.video_url, caption_style: out.caption_style } : item)); setEditingHookClipId(null); } } catch (err) { alert("Network error while re-rendering hook banner."); } finally { setRerenderingClipId(null); } }} className="w-full py-1.5 rounded bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-zinc-950 font-black text-xs transition">
-                                  {rerenderingClipId === clip.id ? "Updating Video (~2s)..." : "Apply & Re-render Clip"}
+                                <button type="button" disabled={rerenderingClipId === String(clip.id)} onClick={async () => { try { setRerenderingClipId(String(clip.id)); const res = await fetch(resolveMediaUrl("/api/clips/rerender-hook"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: clip.job_id, clip_id: clip.id, show_hook: editHookShow, hook_text: editHookText, hook_theme: editHookTheme, hook_size: editHookSize, hook_position: editHookPosition, hook_casing: editHookCasing }) }); const out = await res.json(); if (!res.ok) { alert(out.detail || "Failed to update hook banner"); } else { setSavedClips((prev) => prev.map((item) => String(item.id) === String(clip.id) ? { ...item, hook_banner: out.hook_banner, video_url: out.video_url, caption_style: out.caption_style } : item)); setEditingHookClipId(null); } } catch (err) { alert("Network error while re-rendering hook banner."); } finally { setRerenderingClipId(null); } }} className="w-full py-1.5 rounded bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-zinc-950 font-black text-xs transition">
+                                  {rerenderingClipId === String(clip.id) ? "Updating Video (~2s)..." : "Apply & Re-render Clip"}
                                 </button>
                               </div>
                             )}
