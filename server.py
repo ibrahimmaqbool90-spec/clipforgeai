@@ -1079,7 +1079,9 @@ def _rerender_permanent_clip_banner(video_url: str, new_banner: str, style: dict
     import uuid
     import traceback
 
-    tmp_dir = os.path.join(OUTPUT_DIR, f"perm_{uuid.uuid4().hex[:8]}")
+    import tempfile
+    base_tmp = globals().get("JOBS_DIR") or globals().get("OUTPUT_DIR") or tempfile.gettempdir()
+    tmp_dir = os.path.join(base_tmp, f"perm_{uuid.uuid4().hex[:8]}")
     os.makedirs(tmp_dir, exist_ok=True)
     in_mp4 = os.path.join(tmp_dir, "in.mp4")
     out_mp4 = os.path.join(tmp_dir, "out.mp4")
