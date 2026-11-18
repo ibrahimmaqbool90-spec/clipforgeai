@@ -98,6 +98,51 @@ export default function Home() {
   const [url, setUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [numClips, setNumClips] = useState(4);
+  const [showSubtitleStudio, setShowSubtitleStudio] = useState(false);
+  const [captionPreset, setCaptionPreset] = useState("hormozi");
+  const [captionPrimaryColor, setCaptionPrimaryColor] = useState("#FFFFFF");
+  const [captionHighlightColor, setCaptionHighlightColor] = useState("#FFFF00");
+  const [captionWordsPerLine, setCaptionWordsPerLine] = useState(2);
+  const [captionPosition, setCaptionPosition] = useState<"top" | "center" | "bottom">("bottom");
+  const [captionCasing, setCaptionCasing] = useState<"upper" | "sentence">("upper");
+  const [captionBounce, setCaptionBounce] = useState(true);
+  const [captionShowHook, setCaptionShowHook] = useState(true);
+  const [captionCustomHook, setCaptionCustomHook] = useState("");
+
+  const applyCaptionPreset = (p: string) => {
+    setCaptionPreset(p);
+    if (p === "hormozi") {
+      setCaptionPrimaryColor("#FFFFFF");
+      setCaptionHighlightColor("#FFFF00");
+      setCaptionWordsPerLine(2);
+      setCaptionCasing("upper");
+      setCaptionBounce(true);
+    } else if (p === "mrbeast") {
+      setCaptionPrimaryColor("#FFFFFF");
+      setCaptionHighlightColor("#FF3B30");
+      setCaptionWordsPerLine(2);
+      setCaptionCasing("upper");
+      setCaptionBounce(true);
+    } else if (p === "podcast") {
+      setCaptionPrimaryColor("#F8FAFC");
+      setCaptionHighlightColor("#38BDF8");
+      setCaptionWordsPerLine(3);
+      setCaptionCasing("sentence");
+      setCaptionBounce(false);
+    } else if (p === "neon") {
+      setCaptionPrimaryColor("#E0E7FF");
+      setCaptionHighlightColor("#00F5D4");
+      setCaptionWordsPerLine(2);
+      setCaptionCasing("upper");
+      setCaptionBounce(true);
+    } else if (p === "minimal") {
+      setCaptionPrimaryColor("#FFFFFF");
+      setCaptionHighlightColor("#FACC15");
+      setCaptionWordsPerLine(3);
+      setCaptionCasing("sentence");
+      setCaptionBounce(false);
+    }
+  };
   const [dynamicMode, setDynamicMode] = useState(true);
 
   // Normalized Universal BYOK state
@@ -391,6 +436,21 @@ export default function Home() {
       const formData = new FormData();
       formData.append("num_clips", String(numClips));
       formData.append("dynamic_mode", String(dynamicMode));
+      formData.append(
+        "caption_style",
+        JSON.stringify({
+          preset: captionPreset,
+          enabled: captionPreset !== "none",
+          primaryColor: captionPrimaryColor,
+          highlightColor: captionHighlightColor,
+          wordsPerLine: captionWordsPerLine,
+          position: captionPosition,
+          casing: captionCasing,
+          bounce: captionBounce,
+          showHook: captionShowHook,
+          customHook: captionCustomHook.trim(),
+        })
+      );
       formData.append("user_provider", userProvider);
       if (userApiKey.trim()) {
         formData.append("user_api_key", userApiKey.trim());
@@ -1561,6 +1621,307 @@ export default function Home() {
                         >
                           How to get a free Gemini or Groq key →
                         </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Custom Subtitles Studio */}
+                <div className="rounded-xl border border-zinc-800/90 bg-zinc-950/60 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowSubtitleStudio((v) => !v)}
+                    className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-zinc-900/50 transition"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="px-2 py-0.5 rounded bg-amber-400/15 border border-amber-400/30 text-amber-300 text-[11px] font-bold uppercase tracking-wider">
+                        Subtitles Studio
+                      </span>
+                      <span className="text-xs sm:text-sm font-semibold text-zinc-200 capitalize">
+                        Style: {captionPreset === "none" ? "No Captions (Raw)" : captionPreset}
+                      </span>
+                      <span className="hidden sm:inline text-xs text-zinc-500">
+                        ? {captionWordsPerLine}w/line ? {captionPosition}
+                      </span>
+                    </div>
+                    <span className="text-xs font-semibold text-amber-400">
+                      {showSubtitleStudio ? "Hide ?" : "Customize ?"}
+                    </span>
+                  </button>
+
+                  {showSubtitleStudio && (
+                    <div className="p-4 border-t border-zinc-800/80 grid grid-cols-1 lg:grid-cols-3 gap-4">
+                      {/* Controls Column */}
+                      <div className="lg:col-span-2 space-y-4">
+                        <div>
+                          <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2">
+                            1. Creator Style Presets
+                          </label>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {[
+                              { id: "hormozi", label: "Hormozi Pop", desc: "Bold yellow bounce" },
+                              { id: "mrbeast", label: "MrBeast Impact", desc: "Heavy red/white" },
+                              { id: "podcast", label: "Clean Podcast", desc: "Dark pill badge" },
+                              { id: "neon", label: "Neon Gaming", desc: "Cyan cyber glow" },
+                              { id: "minimal", label: "Minimal Clean", desc: "Subtle modern" },
+                              { id: "none", label: "No Captions", desc: "Clean 9:16 video" },
+                            ].map((p) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => applyCaptionPreset(p.id)}
+                                className={`p-2.5 rounded-lg border text-left transition ${
+                                  captionPreset === p.id
+                                    ? "bg-amber-400/15 border-amber-400 text-amber-200"
+                                    : "bg-zinc-900/80 border-zinc-800 text-zinc-300 hover:border-zinc-700"
+                                }`}
+                              >
+                                <div className="text-xs font-bold">{p.label}</div>
+                                <div className="text-[10px] text-zinc-400 mt-0.5">{p.desc}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {captionPreset !== "none" && (
+                          <>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div>
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+                                  Active Word Color
+                                </label>
+                                <div className="flex items-center gap-1.5">
+                                  {["#FFFF00", "#FF3B30", "#00F5D4", "#4ADE80", "#C084FC"].map((hex) => (
+                                    <button
+                                      key={hex}
+                                      type="button"
+                                      onClick={() => setCaptionHighlightColor(hex)}
+                                      style={{ backgroundColor: hex }}
+                                      className={`w-6 h-6 rounded-full border-2 transition ${
+                                        captionHighlightColor.toUpperCase() === hex
+                                          ? "border-white scale-110"
+                                          : "border-zinc-900 opacity-80 hover:opacity-100"
+                                      }`}
+                                      title={hex}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+                                  Base Text Color
+                                </label>
+                                <div className="flex items-center gap-1.5">
+                                  {["#FFFFFF", "#FEF08A", "#E2E8F0", "#93C5FD"].map((hex) => (
+                                    <button
+                                      key={hex}
+                                      type="button"
+                                      onClick={() => setCaptionPrimaryColor(hex)}
+                                      style={{ backgroundColor: hex }}
+                                      className={`w-6 h-6 rounded-full border-2 transition ${
+                                        captionPrimaryColor.toUpperCase() === hex
+                                          ? "border-amber-400 scale-110"
+                                          : "border-zinc-900 opacity-80 hover:opacity-100"
+                                      }`}
+                                      title={hex}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+                                  Words Per Line
+                                </label>
+                                <div className="flex gap-1">
+                                  {[1, 2, 3, 4].map((w) => (
+                                    <button
+                                      key={w}
+                                      type="button"
+                                      onClick={() => setCaptionWordsPerLine(w)}
+                                      className={`flex-1 py-1 rounded text-xs font-bold border transition ${
+                                        captionWordsPerLine === w
+                                          ? "bg-amber-400 text-zinc-950 border-amber-400"
+                                          : "bg-zinc-900 text-zinc-300 border-zinc-800"
+                                      }`}
+                                    >
+                                      {w}w
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div>
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+                                  Vertical Position
+                                </label>
+                                <div className="flex gap-1">
+                                  {(["top", "center", "bottom"] as const).map((pos) => (
+                                    <button
+                                      key={pos}
+                                      type="button"
+                                      onClick={() => setCaptionPosition(pos)}
+                                      className={`flex-1 py-1 rounded text-xs font-bold capitalize border transition ${
+                                        captionPosition === pos
+                                          ? "bg-amber-400 text-zinc-950 border-amber-400"
+                                          : "bg-zinc-900 text-zinc-300 border-zinc-800"
+                                      }`}
+                                    >
+                                      {pos}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+                                  Letter Casing
+                                </label>
+                                <div className="flex gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setCaptionCasing("upper")}
+                                    className={`flex-1 py-1 rounded text-xs font-bold border transition ${
+                                      captionCasing === "upper"
+                                        ? "bg-amber-400 text-zinc-950 border-amber-400"
+                                        : "bg-zinc-900 text-zinc-300 border-zinc-800"
+                                    }`}
+                                  >
+                                    UPPER
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setCaptionCasing("sentence")}
+                                    className={`flex-1 py-1 rounded text-xs font-bold border transition ${
+                                      captionCasing === "sentence"
+                                        ? "bg-amber-400 text-zinc-950 border-amber-400"
+                                        : "bg-zinc-900 text-zinc-300 border-zinc-800"
+                                    }`}
+                                  >
+                                    Sentence
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+                                  Pop Animation
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => setCaptionBounce((b) => !b)}
+                                  className={`w-full py-1 rounded text-xs font-bold border transition ${
+                                    captionBounce
+                                      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                      : "bg-zinc-900 text-zinc-400 border-zinc-800"
+                                  }`}
+                                >
+                                  {captionBounce ? "Bounce: ON" : "Bounce: OFF"}
+                                </button>
+                              </div>
+                            </div>
+                          </>
+                        )}
+
+                        <div className="pt-2 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setCaptionShowHook((h) => !h)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border shrink-0 transition ${
+                              captionShowHook
+                                ? "bg-amber-400/15 text-amber-300 border-amber-400/40"
+                                : "bg-zinc-900 text-zinc-400 border-zinc-800"
+                            }`}
+                          >
+                            Top Hook Banner: {captionShowHook ? "ON" : "OFF"}
+                          </button>
+                          {captionShowHook && (
+                            <input
+                              type="text"
+                              value={captionCustomHook}
+                              onChange={(e) => setCaptionCustomHook(e.target.value)}
+                              placeholder="Optional custom hook banner (blank = AI auto hook)"
+                              maxLength={45}
+                              className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:border-amber-400 focus:outline-none"
+                            />
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Live 9:16 Preview Box */}
+                      <div className="flex flex-col items-center justify-center bg-zinc-900/60 rounded-xl p-3 border border-zinc-800/80">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-2">
+                          Live 9:16 Frame Preview
+                        </div>
+                        <div className="relative w-36 h-64 rounded-xl overflow-hidden border border-zinc-700 bg-gradient-to-b from-indigo-950 via-zinc-900 to-amber-950/60 shadow-inner flex flex-col justify-between p-2.5">
+                          <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-20 bg-zinc-800/90 border-y border-zinc-700/80 flex items-center justify-center">
+                            <span className="text-[9px] font-semibold text-zinc-400 tracking-wider uppercase">
+                              16:9 Gameplay / Video
+                            </span>
+                          </div>
+
+                          <div className="relative z-10 flex justify-center pt-1">
+                            {captionShowHook && (
+                              <span className="px-2 py-0.5 rounded bg-black/85 text-amber-300 font-black text-[9px] tracking-wide uppercase text-center shadow">
+                                {captionCustomHook.trim() || "INSANE CLUTCH PLAY"}
+                              </span>
+                            )}
+                          </div>
+
+                          <div
+                            className={`relative z-10 flex justify-center ${
+                              captionPosition === "top"
+                                ? "-mt-32"
+                                : captionPosition === "center"
+                                ? "my-auto"
+                                : "pb-5"
+                            }`}
+                          >
+                            {captionPreset !== "none" ? (
+                              <div
+                                className={`px-2 py-0.5 rounded text-center font-black leading-tight ${
+                                  captionPreset === "podcast"
+                                    ? "bg-black/80 text-[11px]"
+                                    : captionPreset === "mrbeast"
+                                    ? "text-[13px] drop-shadow-[0_2px_2px_rgba(0,0,0,1)]"
+                                    : "text-[12px] drop-shadow-[0_2px_2px_rgba(0,0,0,0.95)]"
+                                }`}
+                              >
+                                {(["VIRAL", "SHORTS", "MADE", "FAST"].slice(0, captionWordsPerLine)).map(
+                                  (word, idx) => {
+                                    const disp =
+                                      captionCasing === "upper"
+                                        ? word
+                                        : word[0] + word.slice(1).toLowerCase();
+                                    const isActive = idx === 0;
+                                    return (
+                                      <span
+                                        key={idx}
+                                        style={{
+                                          color: isActive
+                                            ? captionHighlightColor
+                                            : captionPrimaryColor,
+                                        }}
+                                        className={`inline-block mx-0.5 ${
+                                          isActive && captionBounce ? "scale-110" : ""
+                                        }`}
+                                      >
+                                        {disp}
+                                      </span>
+                                    );
+                                  }
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-[9px] text-zinc-400 bg-black/50 px-2 py-0.5 rounded">
+                                Captions Disabled
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
