@@ -1086,7 +1086,7 @@ export default function Home() {
                       onClick={async () => {
                         const visible = selectedFolder === "ALL"
                           ? savedClips
-                          : savedClips.filter((c) => (c.folder || "Uncategorized") === selectedFolder);
+                          : savedClips.filter((c: any) => (c.folder || "Uncategorized") === selectedFolder);
                         const jobIds = Array.from(
                           new Set(
                             visible
