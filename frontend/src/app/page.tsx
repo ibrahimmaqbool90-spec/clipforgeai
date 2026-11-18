@@ -2099,6 +2099,9 @@ export default function Home() {
                                 maxLength={45}
                                 className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:border-amber-400 focus:outline-none"
                               />
+
+                            )}
+                          </div>
                     <div className="mt-2 flex items-center gap-2">
                       <input
                         type="text"
@@ -2116,8 +2119,6 @@ export default function Home() {
                         {captionHookAppendPos === "suffix" ? "At End" : "At Start"}
                       </button>
                     </div>
-                            )}
-                          </div>
                           {captionShowHook && (
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
                               <div>
