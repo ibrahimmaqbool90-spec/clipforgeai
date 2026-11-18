@@ -371,6 +371,7 @@ def render_selected_clips(
     user_id: str | None,
     user_plan: str,
     client_ip: str | None,
+    caption_style: dict | None = None,
 ):
     try:
         results = []
@@ -389,7 +390,7 @@ def render_selected_clips(
             filename = f"{idx}_{safe_name}.mp4"
             out_file = os.path.join(out_dir, filename)
 
-            build_capcut_ass(data["segments"], c.segments, c.hook_banner, ass_file)
+            build_capcut_ass(data["segments"], c.segments, c.hook_banner, ass_file, caption_style=caption_style)
             render_viral_short(video_path, c.segments, ass_file, out_file)
             if os.path.exists(ass_file):
                 os.remove(ass_file)
@@ -450,6 +451,7 @@ def process_job(
     user_id: str | None,
     user_plan: str,
     client_ip: str | None,
+    caption_style: dict | None = None,
 ):
     work_dir = os.path.join(JOBS_DIR, job_id)
     out_dir = os.path.join(work_dir, "shorts")
@@ -549,6 +551,7 @@ def process_job(
                 "user_id": user_id,
                 "user_plan": user_plan,
                 "client_ip": client_ip,
+                "caption_style": caption_style,
             }
             jobs[job_id]["status"] = "needs_confirmation"
             jobs[job_id]["step"] = "AI found 0 viral peaks — awaiting your confirmation..."
@@ -620,6 +623,7 @@ def worker_loop():
             user_id,
             user_plan,
             client_ip,
+            caption_style,
         ) = job_queue.get()
         jobs[job_id]["status"] = "processing"
         process_job(
@@ -635,6 +639,7 @@ def worker_loop():
             user_id,
             user_plan,
             client_ip,
+            caption_style=caption_style,
         )
         job_queue.task_done()
 
@@ -695,6 +700,7 @@ def confirm_fallback_generation(job_id: str, body: ConfirmRequest):
             "user_id": ctx["user_id"],
             "user_plan": ctx["user_plan"],
             "client_ip": ctx["client_ip"],
+            "caption_style": ctx.get("caption_style"),
         },
         daemon=True,
     ).start()
@@ -713,8 +719,15 @@ async def create_clip_job(
     user_api_key: str = Form(default=""),
     custom_base_url: str = Form(default=""),
     custom_model: str = Form(default=""),
+    caption_style: str = Form(default=""),
     file: UploadFile | None = File(default=None),
 ):
+    parsed_caption_style = None
+    if caption_style.strip():
+        try:
+            parsed_caption_style = json.loads(caption_style)
+        except Exception:
+            parsed_caption_style = None
     if not url.strip() and not file:
         raise HTTPException(
             status_code=400, detail="Provide a YouTube URL or upload an MP4 file."
@@ -804,6 +817,7 @@ async def create_clip_job(
         user_id,
         user_plan,
         client_ip,
+        parsed_caption_style,
     ))
     return {"job_id": job_id}
 
