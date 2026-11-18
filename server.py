@@ -1,3 +1,4 @@
+import time
 import base64
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -1097,7 +1098,7 @@ def _rerender_permanent_clip_banner(video_url: str, new_banner: str, style: dict
     subprocess.run(cmd, check=True)
 
     if supabase:
-        bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "clips")
+        bucket = bucket
         storage_path = f"rerendered/{uuid.uuid4().hex}.mp4"
         with open(out_mp4, "rb") as fp:
             supabase.storage.from_(bucket).upload(
