@@ -824,17 +824,88 @@ def snap_segments_to_sentence_end(transcript_segments, clip_segments, max_video_
     return clip_segments
 
 
+def _hex_to_ass_bgr(hex_color, default_bgr="&H00FFFFFF"):
+    if not isinstance(hex_color, str):
+        return default_bgr
+    c = hex_color.strip().lstrip("#")
+    if len(c) != 6:
+        return default_bgr
+    try:
+        r, g, b = c[0:2].upper(), c[2:4].upper(), c[4:6].upper()
+        int(c, 16)
+        return f"&H00{b}{g}{r}"
+    except ValueError:
+        return default_bgr
+
+
 def build_capcut_ass(
-    transcript_segments, clip_segments, hook_banner, ass_path
+    transcript_segments, clip_segments, hook_banner, ass_path, caption_style=None
 ):
-    header = """[Script Info]
+    cfg = caption_style if isinstance(caption_style, dict) else {}
+    preset = str(cfg.get("preset", "hormozi")).lower()
+    enabled = cfg.get("enabled", preset != "none")
+    words_per_line = max(1, min(4, int(cfg.get("wordsPerLine", 2))))
+    position = str(cfg.get("position", "bottom")).lower()
+    casing = str(cfg.get("casing", "upper")).lower()
+    bounce = bool(cfg.get("bounce", preset in ("hormozi", "mrbeast", "neon")))
+    show_hook = bool(cfg.get("showHook", True))
+    custom_hook = str(cfg.get("customHook", "")).strip()
+
+    if position == "top":
+        align_num, margin_v = 8, 290
+    elif position == "center":
+        align_num, margin_v = 5, 0
+    else:
+        align_num, margin_v = 2, 430
+
+    font_name = "Arial Black"
+    font_size = 74
+    outline_w = 6
+    shadow_d = 2
+    border_style = 1
+    outline_col = "&H00000000"
+    back_col = "&H80000000"
+    default_primary = "#FFFFFF"
+    default_highlight = "#FFFF00"
+
+    if preset == "mrbeast":
+        font_size = 82
+        outline_w = 9
+        shadow_d = 4
+        default_highlight = "#FF3B30"
+    elif preset == "podcast":
+        font_name = "Arial"
+        font_size = 64
+        outline_w = 10
+        shadow_d = 0
+        border_style = 3
+        outline_col = "&H33000000"
+        back_col = "&HCC111111"
+        default_highlight = "#38BDF8"
+    elif preset == "neon":
+        font_size = 76
+        outline_w = 6
+        shadow_d = 3
+        outline_col = "&H00660033"
+        default_highlight = "#00F5D4"
+    elif preset == "minimal":
+        font_name = "Arial"
+        font_size = 60
+        outline_w = 3
+        shadow_d = 2
+        default_highlight = "#FACC15"
+
+    prim_bgr = _hex_to_ass_bgr(cfg.get("primaryColor", default_primary), "&H00FFFFFF")
+    high_bgr = _hex_to_ass_bgr(cfg.get("highlightColor", default_highlight), "&H0000FFFF")
+
+    header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
 PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Captions,Arial Black,74,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,6,2,2,50,50,430,1
+Style: Captions,{font_name},{font_size},{prim_bgr},{high_bgr},{outline_col},{back_col},-1,0,0,0,100,100,0,0,{border_style},{outline_w},{shadow_d},{align_num},50,50,{margin_v},1
 Style: Hook,Arial Black,56,&H0000FFFF,&H00FFFFFF,&H00000000,&HCC000000,-1,0,0,0,100,100,0,0,3,14,0,8,60,60,150,1
 
 [Events]
@@ -849,45 +920,53 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         return f"{h}:{m:02}:{s:02}.{cs:02}"
 
     events = []
-    clean_hook = re.sub(r"[^\w\sÂ£$%!?'-]", "", hook_banner).upper()
-    events.append(
-        "Dialogue: 1,0:00:00.00,0:00:03.50,Hook,,0,0,0,,"
-        f"{{\\t(0,120,\\fscx108\\fscy108)\\t(120,240,\\fscx100\\fscy100)}}{clean_hook}"
-    )
+    banner_text = custom_hook if custom_hook else hook_banner
+    if show_hook and banner_text:
+        clean_hook = re.sub(r"[^\w\s\u00a3$%!?'-]", "", banner_text).upper()
+        events.append(
+            "Dialogue: 1,0:00:00.00,0:00:03.50,Hook,,0,0,0,,"
+            f"{{\\t(0,120,\\fscx108\\fscy108)\\t(120,240,\\fscx100\\fscy100)}}{clean_hook}"
+        )
 
     clip_segments = snap_segments_to_sentence_end(transcript_segments, clip_segments)
     words, total_dur = map_words_to_stitched_timeline(
         transcript_segments, clip_segments
     )
-    for i in range(0, len(words), 2):
-        chunk = words[i : i + 2]
-        c_start = max(0.0, chunk[0]["start"])
-        c_end = min(total_dur, chunk[-1]["end"], c_start + 1.4)
-        if c_end - c_start < 0.12:
-            continue
 
-        pop = r"\t(0,90,\fscx114\fscy114)\t(90,180,\fscx100\fscy100)"
-        if len(chunk) == 2:
-            mid = max(c_start + 0.04, min(c_end - 0.04, chunk[1]["start"]))
-            w1, w2 = chunk[0]["word"], chunk[1]["word"]
-            events.append(
-                f"Dialogue: 0,{fmt(c_start)},{fmt(mid)},Captions,,0,0,0,,"
-                f"{{{pop}\\c&H00FFFF&}}{w1} {{\\c&HFFFFFF&}}{w2}"
-            )
-            events.append(
-                f"Dialogue: 0,{fmt(mid)},{fmt(c_end)},Captions,,0,0,0,,"
-                f"{{\\c&HFFFFFF&}}{w1} {{\\c&H00FFFF&}}{w2}"
-            )
-        else:
-            w1 = chunk[0]["word"]
-            events.append(
-                f"Dialogue: 0,{fmt(c_start)},{fmt(c_end)},Captions,,0,0,0,,"
-                f"{{{pop}\\c&H00FFFF&}}{w1}"
-            )
+    if enabled:
+        pop_tag = r"\t(0,90,\fscx114\fscy114)\t(90,180,\fscx100\fscy100)" if bounce else ""
+        glow_tag = r"\blur1.5" if preset == "neon" else ""
+
+        for i in range(0, len(words), words_per_line):
+            chunk = words[i : i + words_per_line]
+            c_start = max(0.0, chunk[0]["start"])
+            c_end = min(total_dur, chunk[-1]["end"], c_start + 1.8)
+            if c_end - c_start < 0.12:
+                continue
+
+            for active_idx in range(len(chunk)):
+                w_start = c_start if active_idx == 0 else max(c_start + 0.03, min(c_end - 0.03, chunk[active_idx]["start"]))
+                w_end = c_end if active_idx == len(chunk) - 1 else max(w_start + 0.03, min(c_end, chunk[active_idx + 1]["start"]))
+                if w_end <= w_start:
+                    continue
+
+                rendered_tokens = []
+                for j, tok_obj in enumerate(chunk):
+                    raw_tok = tok_obj["word"]
+                    disp_tok = raw_tok.upper() if casing == "upper" else raw_tok.capitalize()
+                    if j == active_idx:
+                        prefix = f"{{{pop_tag}{glow_tag}\\c{high_bgr}&}}"
+                    else:
+                        prefix = f"{{\\c{prim_bgr}&}}"
+                    rendered_tokens.append(f"{prefix}{disp_tok}")
+
+                line_str = " ".join(rendered_tokens)
+                events.append(
+                    f"Dialogue: 0,{fmt(w_start)},{fmt(w_end)},Captions,,0,0,0,,{line_str}"
+                )
 
     with open(ass_path, "w", encoding="utf-8") as f:
         f.write(header + "\n".join(events))
-
 
 def render_viral_short(video_path, clip_segments, ass_path, out_path):
     safe_ass = ass_path.replace("\\", "/")
