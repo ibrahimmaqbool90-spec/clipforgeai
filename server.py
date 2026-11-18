@@ -1262,7 +1262,20 @@ async def api_single_rerender_hook(request: Request):
                         target["caption_style"] = merged_style
                         return {"ok": True, "hook_banner": hook_text, "video_url": new_url, "caption_style": merged_style}
 
-        video_url = str(pc.get("video_url") or "")
+        video_url = str(pc.get("video_url") or body.get("video_url") or "").strip()
+        sb = globals().get("supabase_admin") or globals().get("supabase")
+        target_db_id = str(pc.get("id") or clip_id or "").strip()
+        if not video_url and sb and target_db_id:
+            for tbl in ("saved_clips", "clips"):
+                try:
+                    res_db = sb.table(tbl).select("video_url,hook_banner").eq("id", target_db_id).limit(1).execute()
+                    if res_db.data:
+                        video_url = str(res_db.data[0].get("video_url") or "").strip()
+                        if not pc.get("hook_banner"):
+                            pc["hook_banner"] = res_db.data[0].get("hook_banner") or ""
+                        break
+                except Exception:
+                    continue
         if not video_url:
             raise HTTPException(status_code=404, detail="Clip video URL not found for re-render.")
 
@@ -1282,10 +1295,10 @@ async def api_single_rerender_hook(request: Request):
             else video_url
         )
         sb = globals().get("supabase_admin") or globals().get("supabase")
-        if sb and pc.get("id"):
+        if sb and target_db_id:
             for tbl in ("saved_clips", "clips"):
                 try:
-                    sb.table(tbl).update({"hook_banner": new_banner, "video_url": new_url}).eq("id", str(pc["id"])).execute()
+                    sb.table(tbl).update({"hook_banner": new_banner, "video_url": new_url}).eq("id", target_db_id).execute()
                     break
                 except Exception:
                     continue
