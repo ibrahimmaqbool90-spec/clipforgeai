@@ -1077,13 +1077,18 @@ async def lemonsqueezy_webhook(request: Request):
 def _rerender_permanent_clip_banner(video_url: str, new_banner: str, style: dict) -> str:
     import urllib.request
     import uuid
+    import traceback
+
     tmp_dir = os.path.join(OUTPUT_DIR, f"perm_{uuid.uuid4().hex[:8]}")
     os.makedirs(tmp_dir, exist_ok=True)
     in_mp4 = os.path.join(tmp_dir, "in.mp4")
     out_mp4 = os.path.join(tmp_dir, "out.mp4")
     ass_path = os.path.join(tmp_dir, "banner.ass")
 
-    urllib.request.urlretrieve(video_url, in_mp4)
+    req_dl = urllib.request.Request(video_url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req_dl, timeout=30) as resp, open(in_mp4, "wb") as out_f:
+        out_f.write(resp.read())
+
     build_capcut_ass([], [], new_banner, ass_path, caption_style=style)
 
     ass_escaped = ass_path.replace("\\", "/").replace(":", "\\:")
@@ -1095,18 +1100,21 @@ def _rerender_permanent_clip_banner(video_url: str, new_banner: str, style: dict
         "-c:a", "copy",
         out_mp4,
     ]
-    subprocess.run(cmd, check=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"FFmpeg error: {proc.stderr[-300:]}")
 
-    if supabase:
-        bucket = bucket
+    sb = globals().get("supabase_admin") or globals().get("supabase")
+    if sb:
+        bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "clips")
         storage_path = f"rerendered/{uuid.uuid4().hex}.mp4"
         with open(out_mp4, "rb") as fp:
-            supabase.storage.from_(bucket).upload(
+            sb.storage.from_(bucket).upload(
                 storage_path,
                 fp.read(),
                 {"content-type": "video/mp4", "upsert": "true"},
             )
-        return supabase.storage.from_(bucket).get_public_url(storage_path)
+        return sb.storage.from_(bucket).get_public_url(storage_path)
 
     rel_name = os.path.basename(tmp_dir)
     return f"/files/{rel_name}/out.mp4"
@@ -1128,69 +1136,79 @@ class BatchAppendHookRequest(BaseModel):
 
 @app.post("/api/clips/batch-append-hook")
 def api_batch_append_hook(req: BatchAppendHookRequest):
-    job = jobs.get(req.job_id) if req.job_id else None
-    if not job and not req.permanent_clips:
-        raise HTTPException(status_code=404, detail="No active job or permanent clips supplied.")
-    extra = req.append_text.strip()
-    if not extra:
-        raise HTTPException(status_code=400, detail="Append text cannot be empty.")
+    try:
+        job = jobs.get(req.job_id) if req.job_id else None
+        if not job and not req.permanent_clips:
+            raise HTTPException(status_code=404, detail="No active job or permanent clips supplied.")
+        extra = req.append_text.strip()
+        if not extra:
+            raise HTTPException(status_code=400, detail="Append text cannot be empty.")
 
-    updated = []
-    ver = int(time.time())
+        updated = []
+        ver = int(time.time())
 
-    if job:
-        for target in job.get("clips", []):
-            ctx = target.get("_render_ctx")
-            if not ctx or not os.path.exists(ctx["video_path"]):
-                continue
-            base_banner = (target.get("hook_banner") or "").strip()
-            new_banner = f"{extra} {base_banner}".strip() if req.placement == "prefix" else f"{base_banner} {extra}".strip()
+        if job:
+            for target in job.get("clips", []):
+                ctx = target.get("_render_ctx")
+                if not ctx or not os.path.exists(ctx["video_path"]):
+                    continue
+                base_banner = (target.get("hook_banner") or "").strip()
+                new_banner = f"{extra} {base_banner}".strip() if req.placement == "prefix" else f"{base_banner} {extra}".strip()
 
-            merged_style = dict(target.get("caption_style") or {})
-            merged_style["showHook"] = True
-            merged_style["customHook"] = new_banner
+                merged_style = dict(target.get("caption_style") or {})
+                merged_style["showHook"] = True
+                merged_style["customHook"] = new_banner
 
-            build_capcut_ass(
-                ctx["transcript_segments"],
-                ctx["clip_segments"],
-                new_banner,
-                ctx["ass_file"],
-                caption_style=merged_style,
-            )
-            render_viral_short(ctx["video_path"], ctx["clip_segments"], ctx["ass_file"], ctx["out_file"])
+                build_capcut_ass(
+                    ctx["transcript_segments"],
+                    ctx["clip_segments"],
+                    new_banner,
+                    ctx["ass_file"],
+                    caption_style=merged_style,
+                )
+                render_viral_short(ctx["video_path"], ctx["clip_segments"], ctx["ass_file"], ctx["out_file"])
 
-            new_url = f"/files/{req.job_id}/shorts/{ctx['filename']}?v={ver}"
-            target["hook_banner"] = new_banner
-            target["video_url"] = new_url
-            target["caption_style"] = merged_style
-            updated.append({
-                "id": target["id"],
-                "hook_banner": new_banner,
-                "video_url": new_url,
-                "caption_style": merged_style,
-            })
+                new_url = f"/files/{req.job_id}/shorts/{ctx['filename']}?v={ver}"
+                target["hook_banner"] = new_banner
+                target["video_url"] = new_url
+                target["caption_style"] = merged_style
+                updated.append({
+                    "id": target["id"],
+                    "hook_banner": new_banner,
+                    "video_url": new_url,
+                    "caption_style": merged_style,
+                })
 
-    if not updated and req.permanent_clips:
-        for pc in req.permanent_clips:
-            base_banner = (pc.hook_banner or "").strip()
-            new_banner = f"{extra} {base_banner}".strip() if req.placement == "prefix" else f"{base_banner} {extra}".strip()
-            merged_style = dict(pc.caption_style or {})
-            merged_style["showHook"] = True
-            merged_style["customHook"] = new_banner
-            new_url = _rerender_permanent_clip_banner(pc.video_url, new_banner, merged_style)
-            if supabase:
-                try:
-                    supabase.table("saved_clips").update({
-                        "hook_banner": new_banner,
-                        "video_url": new_url,
-                    }).eq("id", pc.id).execute()
-                except Exception:
-                    pass
-            updated.append({
-                "id": pc.id,
-                "hook_banner": new_banner,
-                "video_url": new_url,
-                "caption_style": merged_style,
-            })
+        if not updated and req.permanent_clips:
+            sb = globals().get("supabase_admin") or globals().get("supabase")
+            for pc in req.permanent_clips:
+                base_banner = (pc.hook_banner or "").strip()
+                new_banner = f"{extra} {base_banner}".strip() if req.placement == "prefix" else f"{base_banner} {extra}".strip()
+                merged_style = dict(pc.caption_style or {})
+                merged_style["showHook"] = True
+                merged_style["customHook"] = new_banner
+                new_url = _rerender_permanent_clip_banner(pc.video_url, new_banner, merged_style)
+                if sb:
+                    for tbl in ("saved_clips", "clips"):
+                        try:
+                            sb.table(tbl).update({
+                                "hook_banner": new_banner,
+                                "video_url": new_url,
+                            }).eq("id", pc.id).execute()
+                            break
+                        except Exception:
+                            continue
+                updated.append({
+                    "id": pc.id,
+                    "hook_banner": new_banner,
+                    "video_url": new_url,
+                    "caption_style": merged_style,
+                })
 
-    return {"ok": True, "updated": updated}
+        return {"ok": True, "updated": updated}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Banner update failed: {exc}")
