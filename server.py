@@ -1216,3 +1216,85 @@ def api_batch_append_hook(req: BatchAppendHookRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Banner update failed: {exc}")
+
+
+class SingleRerenderHookRequest(BaseModel):
+    job_id: str = ""
+    clip_id: str = ""
+    hook_text: str = ""
+    show_hook: bool = True
+    hook_theme: str = "gold"
+    hook_size: str = "md"
+    hook_position: str = "top"
+    hook_casing: str = "exact"
+    permanent_clip: dict | None = None
+
+
+@app.post("/api/clips/rerender-hook")
+def api_single_rerender_hook(req: SingleRerenderHookRequest):
+    try:
+        ver = int(time.time())
+        job = jobs.get(req.job_id) if req.job_id else None
+        if job:
+            for target in job.get("clips", []):
+                if str(target.get("id")) == str(req.clip_id):
+                    ctx = target.get("_render_ctx")
+                    if ctx and os.path.exists(ctx["video_path"]):
+                        new_banner = req.hook_text.strip()
+                        merged_style = dict(target.get("caption_style") or {})
+                        merged_style.update({
+                            "showHook": req.show_hook,
+                            "customHook": new_banner,
+                            "hookTheme": req.hook_theme,
+                            "hookSize": req.hook_size,
+                            "hookPosition": req.hook_position,
+                            "hookCasing": req.hook_casing,
+                        })
+                        build_capcut_ass(
+                            ctx["transcript_segments"],
+                            ctx["clip_segments"],
+                            new_banner if req.show_hook else "",
+                            ctx["ass_file"],
+                            caption_style=merged_style,
+                        )
+                        render_viral_short(ctx["video_path"], ctx["clip_segments"], ctx["ass_file"], ctx["out_file"])
+                        new_url = f"/files/{req.job_id}/shorts/{ctx['filename']}?v={ver}"
+                        target["hook_banner"] = new_banner
+                        target["video_url"] = new_url
+                        target["caption_style"] = merged_style
+                        return {"ok": True, "hook_banner": new_banner, "video_url": new_url, "caption_style": merged_style}
+
+        pc = req.permanent_clip or {}
+        if not pc.get("video_url"):
+            raise HTTPException(status_code=404, detail="Clip video URL not found for re-render.")
+
+        new_banner = (req.hook_text or pc.get("hook_banner") or "").strip()
+        merged_style = dict(pc.get("caption_style") or {})
+        merged_style.update({
+            "showHook": req.show_hook,
+            "customHook": new_banner,
+            "hookTheme": req.hook_theme or "gold",
+            "hookSize": req.hook_size or "md",
+            "hookPosition": req.hook_position or "top",
+            "hookCasing": req.hook_casing or "exact",
+        })
+        new_url = (
+            _rerender_permanent_clip_banner(pc["video_url"], new_banner, merged_style)
+            if (req.show_hook and new_banner)
+            else pc["video_url"]
+        )
+        sb = globals().get("supabase_admin") or globals().get("supabase")
+        if sb and pc.get("id"):
+            for tbl in ("saved_clips", "clips"):
+                try:
+                    sb.table(tbl).update({"hook_banner": new_banner, "video_url": new_url}).eq("id", str(pc["id"])).execute()
+                    break
+                except Exception:
+                    continue
+        return {"ok": True, "hook_banner": new_banner, "video_url": new_url, "caption_style": merged_style}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Re-render failed: {exc}")
