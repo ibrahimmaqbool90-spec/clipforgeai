@@ -1064,15 +1064,7 @@ export default function Home() {
                 </form>
               </div>
 
-              {savedClips.length > 0 && (
-                <div className="mb-4 p-3.5 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col md:flex-row md:items-center gap-2.5">
-                  <div className="text-xs font-bold text-amber-300 shrink-0">
-                    Append to All Clip Banners:
-                  </div>
-                  <input
-                    type="text"
-                    value={batchHookAppend}
-                    onChange={(e) => setBatchHookAppend(e.target.value)}
+              
                     maxLength={30}
                     placeholder="e.g. | GTA 6 or PART 1:"
                     className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-500 focus:border-amber-400 focus:outline-none"
@@ -1493,55 +1485,7 @@ export default function Home() {
                           </select>
                         </div>
 
-                        {true && (
-                          <div className="pt-2 border-t border-zinc-800/80">
-                            <button type="button" onClick={() => { if (editingHookClipId === String(clip.id)) { setEditingHookClipId(null); } else { const st = clip.caption_style || {}; setEditingHookClipId(String(clip.id)); setEditHookShow(st.showHook !== false); setEditHookText(clip.hook_banner || ""); setEditHookTheme(st.hookTheme || "gold"); setEditHookSize(st.hookSize || "md"); setEditHookPosition(st.hookPosition || "top"); setEditHookCasing(st.hookCasing || "exact"); } }} className="w-full py-1.5 px-2.5 rounded-lg text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-800 flex items-center justify-between transition">
-                              <span>Edit Top Hook Banner</span>
-                              <span>{editingHookClipId === String(clip.id) ? "[-]" : "[+]"}</span>
-                            </button>
-                            {editingHookClipId === String(clip.id) && (
-                              <div className="mt-2 p-2.5 rounded-lg bg-zinc-950/90 border border-zinc-800 space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[11px] font-bold text-zinc-400">Show Hook Banner</span>
-                                  <button type="button" onClick={() => setEditHookShow((v) => !v)} className={`px-2 py-0.5 rounded text-[11px] font-bold ${editHookShow ? "bg-amber-400 text-zinc-950" : "bg-zinc-800 text-zinc-400"}`}>{editHookShow ? "ON" : "OFF"}</button>
-                                </div>
-                                {editHookShow && (
-                                  <>
-                                    <input type="text" value={editHookText} onChange={(e) => setEditHookText(e.target.value)} maxLength={45} placeholder="Enter top hook text..." className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-100 focus:border-amber-400 focus:outline-none" />
-                                    <div className="flex flex-wrap gap-1">
-                                      {[{ id: "gold", label: "Gold" }, { id: "red", label: "Red" }, { id: "cyan", label: "Cyan" }, { id: "white", label: "White" }, { id: "minimal", label: "Clean" }].map((t) => (
-                                        <button key={t.id} type="button" onClick={() => setEditHookTheme(t.id)} className={`px-2 py-0.5 rounded text-[10px] font-bold border ${editHookTheme === t.id ? "bg-amber-400 text-zinc-950 border-amber-400" : "bg-zinc-900 text-zinc-300 border-zinc-800"}`}>{t.label}</button>
-                                      ))}
-                                    </div>
-                                    <div className="flex gap-1">
-                                      {[{ id: "sm", label: "Small" }, { id: "md", label: "Med" }, { id: "lg", label: "Large" }].map((s) => (
-                                        <button key={s.id} type="button" onClick={() => setEditHookSize(s.id)} className={`flex-1 py-0.5 rounded text-[10px] font-bold border ${editHookSize === s.id ? "bg-amber-400 text-zinc-950 border-amber-400" : "bg-zinc-900 text-zinc-300 border-zinc-800"}`}>{s.label}</button>
-                                      ))}
-                                      <button type="button" onClick={() => setEditHookPosition((p) => p === "top" ? "above_video" : "top")} className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-900 text-zinc-200 border border-zinc-700">{editHookPosition === "top" ? "Top" : "Near Vid"}</button>
-                                      <button type="button" onClick={() => setEditHookCasing((c) => c === "upper" ? "title" : "upper")} className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-900 text-zinc-200 border border-zinc-700">{editHookCasing === "exact" ? "Exact" : editHookCasing === "upper" ? "AA" : "Aa"}</button>
-                                    </div>
-                                  </>
-                                )}
-                                <button type="button" disabled={rerenderingClipId === String(clip.id)} onClick={async () => { try { setRerenderingClipId(String(clip.id)); const res = await fetch(resolveMediaUrl("/api/clips/rerender-hook"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: clip.job_id || clip.video_url?.match(/\/files\/([^/]+)\//)?.[1], clip_id: Number(String(clip.id).replace(/\D/g, '')) || 1, show_hook: editHookShow, hook_text: editHookText,
-                                          video_url: resolveMediaUrl(clip.video_url),
-                                          permanent_clip: {
-                                            id: String(clip.id),
-                                            video_url: resolveMediaUrl(clip.video_url),
-                                            hook_banner: clip.hook_banner || "",
-                                            caption_style: clip.caption_style || {},
-                                          }, hook_theme: editHookTheme, hook_size: editHookSize, hook_position: editHookPosition, hook_casing: editHookCasing }) }); const out = await res.json(); if (!res.ok) { alert(typeof out.detail === "string" ? out.detail : JSON.stringify(out.detail || "Failed to update hook banner")); } else { setSavedClips((prev) => prev.map((item) => String(item.id) === String(clip.id) ? { ...item, hook_banner: out.hook_banner, video_url: out.video_url, caption_style: out.caption_style } : item)); setEditingHookClipId(null); } } catch (err) { alert("Network error while re-rendering hook banner."); } finally { setRerenderingClipId(null); } }} className="w-full py-1.5 rounded bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-zinc-950 font-black text-xs transition">
-                                  {rerenderingClipId === String(clip.id) ? "Updating Video (~2s)..." : "Apply & Re-render Clip"}
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between">
-                          <span className="text-xs font-mono text-zinc-500">
-                            {clip.duration}s
-                          </span>
-                          <a
-                            href={resolveMediaUrl(clip.video_url)}
+                        
                             download={`${clip.title}.mp4`}
                             target="_blank"
                             rel="noreferrer"
