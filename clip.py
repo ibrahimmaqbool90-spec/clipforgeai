@@ -891,7 +891,7 @@ def build_capcut_ass(
     else:
         align_num, margin_v = 2, 430
 
-    font_name = "Arial Black"
+    font_name = "Liberation Sans"
     font_size = 74
     outline_w = 6
     shadow_d = 2
@@ -939,7 +939,7 @@ PlayResY: 1920
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Captions,{font_name},{font_size},{prim_bgr},{high_bgr},{outline_col},{back_col},-1,0,0,0,100,100,0,0,{border_style},{outline_w},{shadow_d},{align_num},50,50,{margin_v},1
-Style: Hook,Arial Black,{hook_font_size},{hook_prim_bgr},&H00FFFFFF,{hook_out_bgr},{hook_back_bgr},-1,0,0,0,100,100,0,0,{hook_border_style},{hook_outline_w},{hook_shadow_d},8,60,60,{hook_margin_v},1
+Style: Hook,Liberation Sans,{hook_font_size},{hook_prim_bgr},&H00FFFFFF,{hook_out_bgr},{hook_back_bgr},-1,0,0,0,100,100,0,0,{hook_border_style},{hook_outline_w},{hook_shadow_d},8,60,60,{hook_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

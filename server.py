@@ -1094,7 +1094,7 @@ def _rerender_permanent_clip_banner(video_url: str, new_banner: str, style: dict
     build_capcut_ass([], [], new_banner, ass_path, caption_style=style)
 
     ass_escaped = ass_path.replace("\\", "/").replace(":", "\\:")
-    vf = f"drawbox=x=0:y=0:w=iw:h=410:color=black@1.0:t=fill,ass='{ass_escaped}'"
+    vf = f"drawbox=x=0:y=0:w=iw:h=ih*0.213:color=black@1.0:t=fill,ass='{ass_escaped}':original_size=540x960"
     cmd = [
         "ffmpeg", "-y", "-i", in_mp4,
         "-vf", vf,
