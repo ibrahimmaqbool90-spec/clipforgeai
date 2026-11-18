@@ -52,6 +52,8 @@ interface ClipResult {
   end?: number;
   duration: number;
   video_url: string;
+  job_id?: string;
+  caption_style?: Record<string, any>;
   saved_to_cloud?: boolean;
   is_favorite?: boolean;
   folder_name?: string;
@@ -108,6 +110,18 @@ export default function Home() {
   const [captionBounce, setCaptionBounce] = useState(true);
   const [captionShowHook, setCaptionShowHook] = useState(true);
   const [captionCustomHook, setCaptionCustomHook] = useState("");
+  const [captionHookTheme, setCaptionHookTheme] = useState<string>("gold");
+  const [captionHookSize, setCaptionHookSize] = useState<string>("md");
+  const [captionHookPosition, setCaptionHookPosition] = useState<string>("top");
+  const [captionHookCasing, setCaptionHookCasing] = useState<string>("upper");
+  const [editingHookClipId, setEditingHookClipId] = useState<number | null>(null);
+  const [editHookShow, setEditHookShow] = useState<boolean>(true);
+  const [editHookText, setEditHookText] = useState<string>("");
+  const [editHookTheme, setEditHookTheme] = useState<string>("gold");
+  const [editHookSize, setEditHookSize] = useState<string>("md");
+  const [editHookPosition, setEditHookPosition] = useState<string>("top");
+  const [editHookCasing, setEditHookCasing] = useState<string>("upper");
+  const [rerenderingClipId, setRerenderingClipId] = useState<number | null>(null);
 
   const applyCaptionPreset = (p: string) => {
     setCaptionPreset(p);
@@ -449,6 +463,10 @@ export default function Home() {
           bounce: captionBounce,
           showHook: captionShowHook,
           customHook: captionCustomHook.trim(),
+            hookTheme: captionHookTheme,
+            hookSize: captionHookSize,
+            hookPosition: captionHookPosition,
+            hookCasing: captionHookCasing,
         })
       );
       formData.append("user_provider", userProvider);
@@ -1264,6 +1282,42 @@ export default function Home() {
                           </select>
                         </div>
 
+                        {clip.job_id && (
+                          <div className="pt-2 border-t border-zinc-800/80">
+                            <button type="button" onClick={() => { if (editingHookClipId === clip.id) { setEditingHookClipId(null); } else { const st = clip.caption_style || {}; setEditingHookClipId(clip.id); setEditHookShow(st.showHook !== false); setEditHookText(clip.hook_banner || ""); setEditHookTheme(st.hookTheme || "gold"); setEditHookSize(st.hookSize || "md"); setEditHookPosition(st.hookPosition || "top"); setEditHookCasing(st.hookCasing || "upper"); } }} className="w-full py-1.5 px-2.5 rounded-lg text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-800 flex items-center justify-between transition">
+                              <span>Edit Top Hook Banner</span>
+                              <span>{editingHookClipId === clip.id ? "[-]" : "[+]"}</span>
+                            </button>
+                            {editingHookClipId === clip.id && (
+                              <div className="mt-2 p-2.5 rounded-lg bg-zinc-950/90 border border-zinc-800 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-bold text-zinc-400">Show Hook Banner</span>
+                                  <button type="button" onClick={() => setEditHookShow((v) => !v)} className={`px-2 py-0.5 rounded text-[11px] font-bold ${editHookShow ? "bg-amber-400 text-zinc-950" : "bg-zinc-800 text-zinc-400"}`}>{editHookShow ? "ON" : "OFF"}</button>
+                                </div>
+                                {editHookShow && (
+                                  <>
+                                    <input type="text" value={editHookText} onChange={(e) => setEditHookText(e.target.value)} maxLength={45} placeholder="Enter top hook text..." className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-100 focus:border-amber-400 focus:outline-none" />
+                                    <div className="flex flex-wrap gap-1">
+                                      {[{ id: "gold", label: "Gold" }, { id: "red", label: "Red" }, { id: "cyan", label: "Cyan" }, { id: "white", label: "White" }, { id: "minimal", label: "Clean" }].map((t) => (
+                                        <button key={t.id} type="button" onClick={() => setEditHookTheme(t.id)} className={`px-2 py-0.5 rounded text-[10px] font-bold border ${editHookTheme === t.id ? "bg-amber-400 text-zinc-950 border-amber-400" : "bg-zinc-900 text-zinc-300 border-zinc-800"}`}>{t.label}</button>
+                                      ))}
+                                    </div>
+                                    <div className="flex gap-1">
+                                      {[{ id: "sm", label: "Small" }, { id: "md", label: "Med" }, { id: "lg", label: "Large" }].map((s) => (
+                                        <button key={s.id} type="button" onClick={() => setEditHookSize(s.id)} className={`flex-1 py-0.5 rounded text-[10px] font-bold border ${editHookSize === s.id ? "bg-amber-400 text-zinc-950 border-amber-400" : "bg-zinc-900 text-zinc-300 border-zinc-800"}`}>{s.label}</button>
+                                      ))}
+                                      <button type="button" onClick={() => setEditHookPosition((p) => p === "top" ? "above_video" : "top")} className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-900 text-zinc-200 border border-zinc-700">{editHookPosition === "top" ? "Top" : "Near Vid"}</button>
+                                      <button type="button" onClick={() => setEditHookCasing((c) => c === "upper" ? "title" : "upper")} className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-900 text-zinc-200 border border-zinc-700">{editHookCasing === "upper" ? "AA" : "Aa"}</button>
+                                    </div>
+                                  </>
+                                )}
+                                <button type="button" disabled={rerenderingClipId === clip.id} onClick={async () => { try { setRerenderingClipId(clip.id); const res = await fetch(resolveMediaUrl("/api/clips/rerender-hook"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: clip.job_id, clip_id: clip.id, show_hook: editHookShow, hook_text: editHookText, hook_theme: editHookTheme, hook_size: editHookSize, hook_position: editHookPosition, hook_casing: editHookCasing }) }); const out = await res.json(); if (!res.ok) { alert(out.detail || "Failed to update hook banner"); } else { setClips((prev) => prev.map((item) => item.id === clip.id ? { ...item, hook_banner: out.hook_banner, video_url: out.video_url, caption_style: out.caption_style } : item)); setEditingHookClipId(null); } } catch (err) { alert("Network error while re-rendering hook banner."); } finally { setRerenderingClipId(null); } }} className="w-full py-1.5 rounded bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-zinc-950 font-black text-xs transition">
+                                  {rerenderingClipId === clip.id ? "Updating Video (~2s)..." : "Apply & Re-render Clip"}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between">
                           <span className="text-xs font-mono text-zinc-500">
                             {clip.duration}s
@@ -1826,27 +1880,56 @@ export default function Home() {
                           </>
                         )}
 
-                        <div className="pt-2 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setCaptionShowHook((h) => !h)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border shrink-0 transition ${
-                              captionShowHook
-                                ? "bg-amber-400/15 text-amber-300 border-amber-400/40"
-                                : "bg-zinc-900 text-zinc-400 border-zinc-800"
-                            }`}
-                          >
-                            Top Hook Banner: {captionShowHook ? "ON" : "OFF"}
-                          </button>
+                        <div className="pt-3 border-t border-zinc-800/80 space-y-2.5">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setCaptionShowHook((h) => !h)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border shrink-0 transition ${
+                                captionShowHook
+                                  ? "bg-amber-400/15 text-amber-300 border-amber-400/40"
+                                  : "bg-zinc-900 text-zinc-400 border-zinc-800"
+                              }`}
+                            >
+                              Top Hook Banner: {captionShowHook ? "ON" : "OFF"}
+                            </button>
+                            {captionShowHook && (
+                              <input
+                                type="text"
+                                value={captionCustomHook}
+                                onChange={(e) => setCaptionCustomHook(e.target.value)}
+                                placeholder="Optional custom hook banner (blank = AI auto hook)"
+                                maxLength={45}
+                                className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:border-amber-400 focus:outline-none"
+                              />
+                            )}
+                          </div>
                           {captionShowHook && (
-                            <input
-                              type="text"
-                              value={captionCustomHook}
-                              onChange={(e) => setCaptionCustomHook(e.target.value)}
-                              placeholder="Optional custom hook banner (blank = AI auto hook)"
-                              maxLength={45}
-                              className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:border-amber-400 focus:outline-none"
-                            />
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                              <div>
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">Banner Style</label>
+                                <div className="flex flex-wrap gap-1">
+                                  {[{ id: "gold", label: "Gold" }, { id: "red", label: "Red" }, { id: "cyan", label: "Cyan" }, { id: "white", label: "White" }, { id: "minimal", label: "Clean" }].map((t) => (
+                                    <button key={t.id} type="button" onClick={() => setCaptionHookTheme(t.id)} className={`px-2 py-1 rounded text-[11px] font-bold border transition ${captionHookTheme === t.id ? "bg-amber-400 text-zinc-950 border-amber-400" : "bg-zinc-900 text-zinc-300 border-zinc-800"}`}>{t.label}</button>
+                                  ))}
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">Banner Size</label>
+                                <div className="flex gap-1">
+                                  {[{ id: "sm", label: "Small" }, { id: "md", label: "Med" }, { id: "lg", label: "Large" }].map((s) => (
+                                    <button key={s.id} type="button" onClick={() => setCaptionHookSize(s.id)} className={`flex-1 py-1 rounded text-[11px] font-bold border transition ${captionHookSize === s.id ? "bg-amber-400 text-zinc-950 border-amber-400" : "bg-zinc-900 text-zinc-300 border-zinc-800"}`}>{s.label}</button>
+                                  ))}
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">Position & Case</label>
+                                <div className="flex gap-1">
+                                  <button type="button" onClick={() => setCaptionHookPosition((p) => p === "top" ? "above_video" : "top")} className="flex-1 py-1 rounded text-[11px] font-bold bg-zinc-900 text-zinc-200 border border-zinc-700 hover:border-amber-400 transition">{captionHookPosition === "top" ? "Top" : "Near Vid"}</button>
+                                  <button type="button" onClick={() => setCaptionHookCasing((c) => c === "upper" ? "title" : "upper")} className="px-2 py-1 rounded text-[11px] font-bold bg-zinc-900 text-zinc-200 border border-zinc-700 hover:border-amber-400 transition">{captionHookCasing === "upper" ? "AA" : "Aa"}</button>
+                                </div>
+                              </div>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1863,9 +1946,9 @@ export default function Home() {
                             </span>
                           </div>
 
-                          <div className="relative z-10 flex justify-center pt-1">
+                          <div className={`relative z-10 flex justify-center transition-all ${captionHookPosition === "above_video" ? "pt-7" : "pt-1"}`}>
                             {captionShowHook && (
-                              <span className="px-2 py-0.5 rounded bg-black/85 text-amber-300 font-black text-[9px] tracking-wide uppercase text-center shadow">
+                              <span className={`px-2 py-0.5 rounded font-black tracking-wide text-center shadow ${captionHookSize === "sm" ? "text-[8px]" : captionHookSize === "lg" ? "text-[11px]" : "text-[9px]"} ${captionHookCasing === "title" ? "capitalize" : "uppercase"} ${captionHookTheme === "red" ? "bg-red-600 text-white" : captionHookTheme === "cyan" ? "bg-zinc-950/90 text-cyan-300 border border-cyan-400/40" : captionHookTheme === "white" ? "bg-white text-zinc-950" : captionHookTheme === "minimal" ? "bg-transparent text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)]" : "bg-black/85 text-amber-300"}`}>
                                 {captionCustomHook.trim() || "INSANE CLUTCH PLAY"}
                               </span>
                             )}

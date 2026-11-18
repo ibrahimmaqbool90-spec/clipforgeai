@@ -20,6 +20,7 @@ from clip import (
     download_and_extract,
     pick_viral_clips,
     render_viral_short,
+    reburn_ass_on_raw,
 )
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -392,11 +393,10 @@ def render_selected_clips(
 
             build_capcut_ass(data["segments"], c.segments, c.hook_banner, ass_file, caption_style=caption_style)
             render_viral_short(video_path, c.segments, ass_file, out_file)
-            if os.path.exists(ass_file):
-                os.remove(ass_file)
 
             clip_record = {
                 "id": idx,
+                "job_id": job_id,
                 "hook_banner": c.hook_banner,
                 "title": c.title,
                 "story_arc": c.story_arc,
@@ -406,6 +406,15 @@ def render_selected_clips(
                 "duration": total_dur,
                 "video_url": f"/files/{job_id}/shorts/{filename}",
                 "social_meta": build_social_metadata(c, data.get("segments", [])),
+                "caption_style": caption_style or {},
+                "_render_ctx": {
+                    "video_path": video_path,
+                    "ass_file": ass_file,
+                    "out_file": out_file,
+                    "filename": filename,
+                    "transcript_segments": data.get("segments", []),
+                    "clip_segments": c.segments,
+                },
             }
 
             add_log(

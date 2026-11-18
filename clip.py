@@ -850,6 +850,39 @@ def build_capcut_ass(
     bounce = bool(cfg.get("bounce", preset in ("hormozi", "mrbeast", "neon")))
     show_hook = bool(cfg.get("showHook", True))
     custom_hook = str(cfg.get("customHook", "")).strip()
+    hook_theme = str(cfg.get("hookTheme", "gold")).lower()
+    hook_size = str(cfg.get("hookSize", "md")).lower()
+    hook_pos = str(cfg.get("hookPosition", "top")).lower()
+    hook_casing = str(cfg.get("hookCasing", "upper")).lower()
+
+    hook_font_size = 48 if hook_size == "sm" else (64 if hook_size == "lg" else 56)
+    hook_margin_v = 265 if hook_pos == "above_video" else 145
+    hook_prim_bgr = "&H0000FFFF"
+    hook_out_bgr = "&H00000000"
+    hook_back_bgr = "&HCC000000"
+    hook_border_style = 3
+    hook_outline_w = 14
+    hook_shadow_d = 0
+
+    if hook_theme == "red":
+        hook_prim_bgr = "&H00FFFFFF"
+        hook_out_bgr = "&H002020DD"
+        hook_back_bgr = "&HE61818CC"
+    elif hook_theme == "cyan":
+        hook_prim_bgr = "&H00F5D400"
+        hook_out_bgr = "&H00181818"
+        hook_back_bgr = "&HD90A0A14"
+    elif hook_theme == "white":
+        hook_prim_bgr = "&H00111111"
+        hook_out_bgr = "&H00FFFFFF"
+        hook_back_bgr = "&HF2FFFFFF"
+    elif hook_theme == "minimal":
+        hook_prim_bgr = "&H00FFFFFF"
+        hook_out_bgr = "&H00000000"
+        hook_back_bgr = "&H80000000"
+        hook_border_style = 1
+        hook_outline_w = 5
+        hook_shadow_d = 2
 
     if position == "top":
         align_num, margin_v = 8, 290
@@ -906,7 +939,7 @@ PlayResY: 1920
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Captions,{font_name},{font_size},{prim_bgr},{high_bgr},{outline_col},{back_col},-1,0,0,0,100,100,0,0,{border_style},{outline_w},{shadow_d},{align_num},50,50,{margin_v},1
-Style: Hook,Arial Black,56,&H0000FFFF,&H00FFFFFF,&H00000000,&HCC000000,-1,0,0,0,100,100,0,0,3,14,0,8,60,60,150,1
+Style: Hook,Arial Black,{hook_font_size},{hook_prim_bgr},&H00FFFFFF,{hook_out_bgr},{hook_back_bgr},-1,0,0,0,100,100,0,0,{hook_border_style},{hook_outline_w},{hook_shadow_d},8,60,60,{hook_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -922,9 +955,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     events = []
     banner_text = custom_hook if custom_hook else hook_banner
     if show_hook and banner_text:
-        clean_hook = re.sub(r"[^\w\s\u00a3$%!?'-]", "", banner_text).upper()
+        clean_hook = re.sub(r"[^\w\s\u00a3$%!?'-]", "", banner_text).strip()
+        if hook_casing == "title":
+            clean_hook = " ".join(w.capitalize() for w in clean_hook.split())
+        else:
+            clean_hook = clean_hook.upper()
         events.append(
-            "Dialogue: 1,0:00:00.00,0:00:03.50,Hook,,0,0,0,,"
+            "Dialogue: 1,0:00:00.00,0:00:03.80,Hook,,0,0,0,,"
             f"{{\\t(0,120,\\fscx108\\fscy108)\\t(120,240,\\fscx100\\fscy100)}}{clean_hook}"
         )
 
@@ -968,7 +1005,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     with open(ass_path, "w", encoding="utf-8") as f:
         f.write(header + "\n".join(events))
 
-def render_viral_short(video_path, clip_segments, ass_path, out_path):
+def render_viral_short(video_path, clip_segments, ass_path, out_path, raw_cache_path=None):
     safe_ass = ass_path.replace("\\", "/")
     cmd = ["ffmpeg", "-y"]
     concat_inputs = []
@@ -992,7 +1029,7 @@ def render_viral_short(video_path, clip_segments, ass_path, out_path):
         "[bg_in]scale=68:120:force_original_aspect_ratio=increase,"
         "crop=68:120,gblur=sigma=8,eq=brightness=-0.12:saturation=1.15,"
         "scale=540:960:flags=bilinear[bg];"
-        "[fg_in]scale=540:960:force_original_aspect_ratio=decrease[fg];"
+        "[fg_in]scale=648:1152:force_original_aspect_ratio=decrease,crop='min(iw,540)':'min(ih,960)'[fg];"
         "[bg][fg]overlay=(W-w)/2:(H-h)/2[v];"
         f"[v]ass={safe_ass}[outv]"
     )
@@ -1011,6 +1048,21 @@ def render_viral_short(video_path, clip_segments, ass_path, out_path):
         "-b:a", "128k",
         out_path,
     ])
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+
+
+
+def reburn_ass_on_raw(raw_video_path, ass_path, out_path):
+    safe_ass = ass_path.replace("\\", "/").replace(":", "\\:")
+    cmd = [
+        "ffmpeg", "-y", "-i", raw_video_path,
+        "-vf", f"ass={safe_ass}",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24",
+        "-threads", "1", "-maxrate", "1800k", "-bufsize", "512k",
+        "-c:a", "copy",
+        out_path,
+    ]
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
 
