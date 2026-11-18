@@ -954,6 +954,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     events = []
     banner_text = custom_hook if custom_hook else hook_banner
+    hook_append = str(cfg.get("hookAppend", "")).strip()
+    hook_append_pos = str(cfg.get("hookAppendPlacement", "suffix")).lower()
+    if banner_text and hook_append and hook_append not in banner_text:
+        banner_text = f"{hook_append} {banner_text}" if hook_append_pos == "prefix" else f"{banner_text} {hook_append}"
     if show_hook and banner_text:
         clean_hook = re.sub(r"[^\w\s\u00a3$%!?'-]", "", banner_text).strip()
         if hook_casing == "title":

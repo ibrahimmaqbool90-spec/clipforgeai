@@ -110,6 +110,9 @@ export default function Home() {
   const [captionBounce, setCaptionBounce] = useState(true);
   const [captionShowHook, setCaptionShowHook] = useState(true);
   const [captionCustomHook, setCaptionCustomHook] = useState("");
+  const [captionHookAppend, setCaptionHookAppend] = useState<string>("");
+  const [captionHookAppendPos, setCaptionHookAppendPos] = useState<"suffix" | "prefix">("suffix");
+  const [hookUndoMap, setHookUndoMap] = useState<Record<string, { hook_banner: string; video_url: string; caption_style: any }>>({});
   const [captionHookTheme, setCaptionHookTheme] = useState<string>("gold");
   const [captionHookSize, setCaptionHookSize] = useState<string>("md");
   const [captionHookPosition, setCaptionHookPosition] = useState<string>("top");
@@ -466,6 +469,8 @@ export default function Home() {
           bounce: captionBounce,
           showHook: captionShowHook,
           customHook: captionCustomHook.trim(),
+          hookAppend: captionHookAppend.trim(),
+          hookAppendPlacement: captionHookAppendPos,
             hookTheme: captionHookTheme,
             hookSize: captionHookSize,
             hookPosition: captionHookPosition,
@@ -1097,6 +1102,11 @@ export default function Home() {
                         if (jobIds.length === 0) {
                           try {
                             setBatchAppendingHooks(true);
+                            const snaps: Record<string, any> = {};
+                            for (const c of visible) {
+                              snaps[String(c.id)] = { hook_banner: c.hook_banner || "", video_url: c.video_url, caption_style: c.caption_style || {} };
+                            }
+                            setHookUndoMap((prev) => ({ ...prev, ...snaps }));
                             for (const c of visible) {
                               const res = await fetch(resolveMediaUrl("/api/clips/batch-append-hook"), {
                                 method: "POST",
@@ -1178,6 +1188,67 @@ export default function Home() {
                     >
                       {batchAppendingHooks ? "Updating All Clips..." : "Append to All"}
                     </button>
+                    {Object.keys(hookUndoMap).length > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const entries = Object.entries(hookUndoMap);
+                            setSavedClips((prev) =>
+                              prev.map((item) => {
+                                const snap = hookUndoMap[String(item.id)];
+                                return snap ? { ...item, ...snap } : item;
+                              })
+                            );
+                            setJob((prev: any) =>
+                              prev && prev.clips
+                                ? {
+                                    ...prev,
+                                    clips: prev.clips.map((item: any) => {
+                                      const snap = hookUndoMap[String(item.id)];
+                                      return snap ? { ...item, ...snap } : item;
+                                    }),
+                                  }
+                                : prev
+                            );
+                            for (const [cid, snap] of entries) {
+                              if (supabase && session?.user) {
+                                await supabase
+                                  .from("saved_clips")
+                                  .update({ hook_banner: snap.hook_banner, video_url: snap.video_url })
+                                  .eq("id", cid);
+                              }
+                            }
+                            setHookUndoMap({});
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition"
+                        >
+                          Undo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const entries = Object.entries(hookUndoMap);
+                            for (const [cid] of entries) {
+                              const current =
+                                savedClips.find((x) => String(x.id) === cid) ||
+                                job?.clips?.find((x: any) => String(x.id) === cid);
+                              if (current && supabase && session?.user) {
+                                await supabase
+                                  .from("saved_clips")
+                                  .update({ hook_banner: current.hook_banner, video_url: current.video_url })
+                                  .eq("id", cid);
+                              }
+                            }
+                            setHookUndoMap({});
+                            alert("Banner changes saved and locked!");
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-black bg-emerald-500 hover:bg-emerald-400 text-zinc-950 transition"
+                        >
+                          Save & Lock
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -1408,9 +1479,9 @@ export default function Home() {
                           </select>
                         </div>
 
-                        {(clip.job_id || clip.video_url?.match(/\/files\/([^/]+)\//)?.[1]) && (
+                        {true && (
                           <div className="pt-2 border-t border-zinc-800/80">
-                            <button type="button" onClick={() => { if (editingHookClipId === String(clip.id)) { setEditingHookClipId(null); } else { const st = clip.caption_style || {}; setEditingHookClipId(String(clip.id)); setEditHookShow(st.showHook !== false); setEditHookText(clip.hook_banner || ""); setEditHookTheme(st.hookTheme || "gold"); setEditHookSize(st.hookSize || "md"); setEditHookPosition(st.hookPosition || "top"); setEditHookCasing(st.hookCasing || "upper"); } }} className="w-full py-1.5 px-2.5 rounded-lg text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-800 flex items-center justify-between transition">
+                            <button type="button" onClick={() => { if (editingHookClipId === String(clip.id)) { setEditingHookClipId(null); } else { const st = clip.caption_style || {}; setEditingHookClipId(String(clip.id)); setEditHookShow(st.showHook !== false); setEditHookText(clip.hook_banner || ""); setEditHookTheme(st.hookTheme || "gold"); setEditHookSize(st.hookSize || "md"); setEditHookPosition(st.hookPosition || "top"); setEditHookCasing(st.hookCasing || "exact"); } }} className="w-full py-1.5 px-2.5 rounded-lg text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-800 flex items-center justify-between transition">
                               <span>Edit Top Hook Banner</span>
                               <span>{editingHookClipId === String(clip.id) ? "[-]" : "[+]"}</span>
                             </button>
@@ -1433,7 +1504,7 @@ export default function Home() {
                                         <button key={s.id} type="button" onClick={() => setEditHookSize(s.id)} className={`flex-1 py-0.5 rounded text-[10px] font-bold border ${editHookSize === s.id ? "bg-amber-400 text-zinc-950 border-amber-400" : "bg-zinc-900 text-zinc-300 border-zinc-800"}`}>{s.label}</button>
                                       ))}
                                       <button type="button" onClick={() => setEditHookPosition((p) => p === "top" ? "above_video" : "top")} className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-900 text-zinc-200 border border-zinc-700">{editHookPosition === "top" ? "Top" : "Near Vid"}</button>
-                                      <button type="button" onClick={() => setEditHookCasing((c) => c === "upper" ? "title" : "upper")} className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-900 text-zinc-200 border border-zinc-700">{editHookCasing === "upper" ? "AA" : "Aa"}</button>
+                                      <button type="button" onClick={() => setEditHookCasing((c) => c === "upper" ? "title" : "upper")} className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-900 text-zinc-200 border border-zinc-700">{editHookCasing === "exact" ? "Exact" : editHookCasing === "upper" ? "AA" : "Aa"}</button>
                                     </div>
                                   </>
                                 )}
@@ -2028,6 +2099,23 @@ export default function Home() {
                                 maxLength={45}
                                 className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:border-amber-400 focus:outline-none"
                               />
+                    <div className="mt-2 flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={captionHookAppend}
+                        onChange={(e) => setCaptionHookAppend(e.target.value)}
+                        maxLength={30}
+                        placeholder="Append to all AI banners (e.g. | ft. theRadBrad)"
+                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-500 focus:border-amber-400 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCaptionHookAppendPos((p) => (p === "suffix" ? "prefix" : "suffix"))}
+                        className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-zinc-950 text-zinc-300 border border-zinc-700 hover:border-amber-400 transition shrink-0"
+                      >
+                        {captionHookAppendPos === "suffix" ? "At End" : "At Start"}
+                      </button>
+                    </div>
                             )}
                           </div>
                           {captionShowHook && (
@@ -2519,7 +2607,7 @@ export default function Home() {
                             {clip.story_arc}
                           </p>
                         </div>
-                        {(clip.job_id || jobId) && (
+                        {true && (
                           <div className="pt-2 border-t border-zinc-800/80">
                             <button
                               type="button"
@@ -2535,7 +2623,7 @@ export default function Home() {
                                   setEditHookTheme(st.hookTheme || "gold");
                                   setEditHookSize(st.hookSize || "md");
                                   setEditHookPosition(st.hookPosition || "top");
-                                  setEditHookCasing(st.hookCasing || "upper");
+                                  setEditHookCasing(st.hookCasing || "exact");
                                 }
                               }}
                               className="w-full py-1.5 px-2.5 rounded-lg text-xs font-bold bg-zinc-950 hover:bg-zinc-800 text-amber-300 border border-zinc-800 flex items-center justify-between transition"
@@ -2622,11 +2710,11 @@ export default function Home() {
                                       <button
                                         type="button"
                                         onClick={() =>
-                                          setEditHookCasing((c) => (c === "upper" ? "title" : "upper"))
+                                          setEditHookCasing((c) => (c === "exact" ? "upper" : c === "upper" ? "title" : "exact"))
                                         }
                                         className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-900 text-zinc-200 border border-zinc-700"
                                       >
-                                        {editHookCasing === "upper" ? "AA" : "Aa"}
+                                        {editHookCasing === "exact" ? "Exact" : editHookCasing === "upper" ? "AA" : "Aa"}
                                       </button>
                                     </div>
                                   </>
@@ -2651,6 +2739,12 @@ export default function Home() {
                                           hook_size: editHookSize,
                                           hook_position: editHookPosition,
                                           hook_casing: editHookCasing,
+                                          permanent_clip: {
+                                            id: String(clip.id),
+                                            video_url: resolveMediaUrl(clip.video_url),
+                                            hook_banner: clip.hook_banner || "",
+                                            caption_style: clip.caption_style || {},
+                                          },
                                         }),
                                       });
                                       const out = await res.json();

@@ -1160,6 +1160,7 @@ def api_batch_append_hook(req: BatchAppendHookRequest):
                 merged_style = dict(target.get("caption_style") or {})
                 merged_style["showHook"] = True
                 merged_style["customHook"] = new_banner
+                merged_style["hookCasing"] = "exact"
 
                 build_capcut_ass(
                     ctx["transcript_segments"],
@@ -1189,6 +1190,7 @@ def api_batch_append_hook(req: BatchAppendHookRequest):
                 merged_style = dict(pc.caption_style or {})
                 merged_style["showHook"] = True
                 merged_style["customHook"] = new_banner
+                merged_style["hookCasing"] = "exact"
                 new_url = _rerender_permanent_clip_banner(pc.video_url, new_banner, merged_style)
                 if sb:
                     for tbl in ("saved_clips", "clips"):
