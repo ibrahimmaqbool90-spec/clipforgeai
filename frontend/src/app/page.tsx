@@ -1059,6 +1059,92 @@ export default function Home() {
                 </form>
               </div>
 
+              {savedClips.length > 0 && (
+                <div className="mb-4 p-3.5 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col md:flex-row md:items-center gap-2.5">
+                  <div className="text-xs font-bold text-amber-300 shrink-0">
+                    Append to All Clip Banners:
+                  </div>
+                  <input
+                    type="text"
+                    value={batchHookAppend}
+                    onChange={(e) => setBatchHookAppend(e.target.value)}
+                    maxLength={30}
+                    placeholder="e.g. | GTA 6 or PART 1:"
+                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-500 focus:border-amber-400 focus:outline-none"
+                  />
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setBatchHookPlacement((p) => (p === "suffix" ? "prefix" : "suffix"))}
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-zinc-950 text-zinc-300 border border-zinc-700 hover:border-amber-400 transition"
+                    >
+                      {batchHookPlacement === "suffix" ? "At End (Hook + Text)" : "At Start (Text + Hook)"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={batchAppendingHooks || !batchHookAppend.trim()}
+                      onClick={async () => {
+                        const visible = selectedFolder === "ALL"
+                          ? savedClips
+                          : savedClips.filter((c) => (c.folder || "Uncategorized") === selectedFolder);
+                        const jobIds = Array.from(
+                          new Set(
+                            visible
+                              .map((c) => c.job_id || c.video_url?.match(/\/files\/([^/]+)\//)?.[1])
+                              .filter(Boolean) as string[]
+                          )
+                        );
+                        if (jobIds.length === 0) {
+                          alert("No active render sessions found for these clips.");
+                          return;
+                        }
+                        try {
+                          setBatchAppendingHooks(true);
+                          for (const jid of jobIds) {
+                            const res = await fetch(resolveMediaUrl("/api/clips/batch-append-hook"), {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                job_id: jid,
+                                append_text: batchHookAppend.trim(),
+                                placement: batchHookPlacement,
+                              }),
+                            });
+                            const out = await res.json();
+                            if (!res.ok) {
+                              alert(out.detail || "Failed to update banners");
+                            } else if (Array.isArray(out.updated)) {
+                              const byId = new Map(out.updated.map((u: any) => [String(u.id), u]));
+                              setSavedClips((prev) =>
+                                prev.map((item) => {
+                                  const hit: any = byId.get(String(item.id));
+                                  return hit
+                                    ? {
+                                        ...item,
+                                        hook_banner: hit.hook_banner,
+                                        video_url: hit.video_url,
+                                        caption_style: hit.caption_style,
+                                      }
+                                    : item;
+                                })
+                              );
+                            }
+                          }
+                          setBatchHookAppend("");
+                        } catch (err) {
+                          alert("Network error while updating banners.");
+                        } finally {
+                          setBatchAppendingHooks(false);
+                        }
+                      }}
+                      className="px-3.5 py-1.5 rounded-lg text-xs font-black bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-zinc-950 transition"
+                    >
+                      {batchAppendingHooks ? "Updating All Clips..." : "Append to All"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {selectedFolder !== "ALL" && (
                 <div className="pt-3 border-t border-zinc-800/80 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1285,7 +1371,7 @@ export default function Home() {
                           </select>
                         </div>
 
-                        {clip.job_id && (
+                        {(clip.job_id || clip.video_url?.match(/\/files\/([^/]+)\//)?.[1]) && (
                           <div className="pt-2 border-t border-zinc-800/80">
                             <button type="button" onClick={() => { if (editingHookClipId === String(clip.id)) { setEditingHookClipId(null); } else { const st = clip.caption_style || {}; setEditingHookClipId(String(clip.id)); setEditHookShow(st.showHook !== false); setEditHookText(clip.hook_banner || ""); setEditHookTheme(st.hookTheme || "gold"); setEditHookSize(st.hookSize || "md"); setEditHookPosition(st.hookPosition || "top"); setEditHookCasing(st.hookCasing || "upper"); } }} className="w-full py-1.5 px-2.5 rounded-lg text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-800 flex items-center justify-between transition">
                               <span>Edit Top Hook Banner</span>
@@ -1314,7 +1400,7 @@ export default function Home() {
                                     </div>
                                   </>
                                 )}
-                                <button type="button" disabled={rerenderingClipId === String(clip.id)} onClick={async () => { try { setRerenderingClipId(String(clip.id)); const res = await fetch(resolveMediaUrl("/api/clips/rerender-hook"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: clip.job_id, clip_id: clip.id, show_hook: editHookShow, hook_text: editHookText, hook_theme: editHookTheme, hook_size: editHookSize, hook_position: editHookPosition, hook_casing: editHookCasing }) }); const out = await res.json(); if (!res.ok) { alert(out.detail || "Failed to update hook banner"); } else { setSavedClips((prev) => prev.map((item) => String(item.id) === String(clip.id) ? { ...item, hook_banner: out.hook_banner, video_url: out.video_url, caption_style: out.caption_style } : item)); setEditingHookClipId(null); } } catch (err) { alert("Network error while re-rendering hook banner."); } finally { setRerenderingClipId(null); } }} className="w-full py-1.5 rounded bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-zinc-950 font-black text-xs transition">
+                                <button type="button" disabled={rerenderingClipId === String(clip.id)} onClick={async () => { try { setRerenderingClipId(String(clip.id)); const res = await fetch(resolveMediaUrl("/api/clips/rerender-hook"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: clip.job_id || clip.video_url?.match(/\/files\/([^/]+)\//)?.[1], clip_id: Number(String(clip.id).replace(/\D/g, '')) || 1, show_hook: editHookShow, hook_text: editHookText, hook_theme: editHookTheme, hook_size: editHookSize, hook_position: editHookPosition, hook_casing: editHookCasing }) }); const out = await res.json(); if (!res.ok) { alert(out.detail || "Failed to update hook banner"); } else { setSavedClips((prev) => prev.map((item) => String(item.id) === String(clip.id) ? { ...item, hook_banner: out.hook_banner, video_url: out.video_url, caption_style: out.caption_style } : item)); setEditingHookClipId(null); } } catch (err) { alert("Network error while re-rendering hook banner."); } finally { setRerenderingClipId(null); } }} className="w-full py-1.5 rounded bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-zinc-950 font-black text-xs transition">
                                   {rerenderingClipId === String(clip.id) ? "Updating Video (~2s)..." : "Apply & Re-render Clip"}
                                 </button>
                               </div>
