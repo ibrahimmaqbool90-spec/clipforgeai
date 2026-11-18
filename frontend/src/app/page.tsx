@@ -1856,7 +1856,7 @@ export default function Home() {
                         <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-2">
                           Live 9:16 Frame Preview
                         </div>
-                        <div className="relative w-36 h-64 rounded-xl overflow-hidden border border-zinc-700 bg-gradient-to-b from-indigo-950 via-zinc-900 to-amber-950/60 shadow-inner flex flex-col justify-between p-2.5">
+                        <div className="relative w-36 h-64 rounded-xl overflow-hidden border border-zinc-700 bg-gradient-to-b from-indigo-950 via-zinc-900 to-amber-950/60 shadow-inner p-2.5">
                           <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-20 bg-zinc-800/90 border-y border-zinc-700/80 flex items-center justify-center">
                             <span className="text-[9px] font-semibold text-zinc-400 tracking-wider uppercase">
                               16:9 Gameplay / Video
