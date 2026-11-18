@@ -1641,11 +1641,11 @@ export default function Home() {
                         Style: {captionPreset === "none" ? "No Captions (Raw)" : captionPreset}
                       </span>
                       <span className="hidden sm:inline text-xs text-zinc-500">
-                        ? {captionWordsPerLine}w/line ? {captionPosition}
+                        | {captionWordsPerLine}w/line | {captionPosition}
                       </span>
                     </div>
                     <span className="text-xs font-semibold text-amber-400">
-                      {showSubtitleStudio ? "Hide ?" : "Customize ?"}
+                      {showSubtitleStudio ? "Hide [-]" : "Customize [+]"}
                     </span>
                   </button>
 
@@ -1872,12 +1872,12 @@ export default function Home() {
                           </div>
 
                           <div
-                            className={`relative z-10 flex justify-center ${
+                            className={`absolute inset-x-2 z-20 flex justify-center transition-all ${
                               captionPosition === "top"
-                                ? "-mt-32"
+                                ? "top-12"
                                 : captionPosition === "center"
-                                ? "my-auto"
-                                : "pb-5"
+                                ? "top-1/2 -translate-y-1/2"
+                                : "bottom-5"
                             }`}
                           >
                             {captionPreset !== "none" ? (
