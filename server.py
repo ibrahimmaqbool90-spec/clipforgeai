@@ -309,6 +309,32 @@ def save_clip_to_cloud(
 
 
 
+def download_temp_vod_from_supabase(storage_path: str, dest_path: str):
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        raise RuntimeError("Supabase storage is not configured on the server.")
+    encoded = urllib.parse.quote(storage_path, safe="/")
+    req = urllib.request.Request(
+        f"{SUPABASE_URL}/storage/v1/object/shorts/{encoded}",
+        headers={
+            "apikey": SUPABASE_SERVICE_KEY,
+            "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+        },
+        method="GET",
+    )
+    with urllib.request.urlopen(req, timeout=600) as resp, open(dest_path, "wb") as out_f:
+        shutil.copyfileobj(resp, out_f)
+
+
+def delete_temp_vod_from_supabase(storage_path: str | None):
+    if not storage_path or not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return
+    try:
+        encoded = urllib.parse.quote(storage_path, safe="/")
+        _supabase_request(f"/storage/v1/object/shorts/{encoded}", method="DELETE")
+    except Exception:
+        pass
+
+
 def build_social_metadata(clip_obj, transcript_segments: list) -> dict:
     """Builds ready-to-post YouTube Shorts / Reels / TikTok title, description, hashtags, and pinned comment."""
     c_start, c_end, _ = clip_bounds(clip_obj)
@@ -452,6 +478,7 @@ def process_job(
     job_id: str,
     url: str | None,
     uploaded_video: str | None,
+    storage_path: str | None,
     num_clips: int,
     dynamic_mode: bool,
     user_provider: str,
@@ -474,6 +501,14 @@ def process_job(
     paused_for_confirmation = False
 
     try:
+        if storage_path:
+            jobs[job_id]["step"] = "Downloading uploaded video from cloud storage..."
+            jobs[job_id]["progress"] = 12
+            add_log(job_id, "storage: Fetching uploaded VOD into worker...")
+            video_path = os.path.join(work_dir, "uploaded_source.mp4")
+            download_temp_vod_from_supabase(storage_path, video_path)
+            add_log(job_id, "storage: VOD downloaded to worker.")
+
         if url:
             jobs[job_id]["step"] = "Downloading video from URL..."
             jobs[job_id]["progress"] = 15
@@ -617,6 +652,7 @@ def process_job(
     finally:
         if not paused_for_confirmation:
             cleanup_temp_files(video_path, audio_path)
+            delete_temp_vod_from_supabase(storage_path)
 
 
 def worker_loop():
@@ -625,6 +661,7 @@ def worker_loop():
             job_id,
             url,
             uploaded_video,
+            storage_path,
             num_clips,
             dynamic_mode,
             user_provider,
@@ -641,6 +678,7 @@ def worker_loop():
             job_id,
             url,
             uploaded_video,
+            storage_path,
             num_clips,
             dynamic_mode,
             user_provider,
@@ -731,6 +769,7 @@ async def create_clip_job(
     custom_base_url: str = Form(default=""),
     custom_model: str = Form(default=""),
     caption_style: str = Form(default=""),
+    storage_path: str = Form(default=""),
     file: UploadFile | None = File(default=None),
 ):
     parsed_caption_style = None
@@ -739,7 +778,7 @@ async def create_clip_job(
             parsed_caption_style = json.loads(caption_style)
         except Exception:
             parsed_caption_style = None
-    if not url.strip() and not file:
+    if not url.strip() and not file and not storage_path.strip():
         raise HTTPException(
             status_code=400, detail="Provide a YouTube URL or upload an MP4 file."
         )
@@ -819,6 +858,7 @@ async def create_clip_job(
         job_id,
         url.strip() or None,
         uploaded_path,
+        storage_path.strip() or None,
         requested_clips,
         dynamic_mode,
         user_provider.strip(),

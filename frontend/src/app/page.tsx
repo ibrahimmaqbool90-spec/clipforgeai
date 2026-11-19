@@ -490,7 +490,39 @@ export default function Home() {
       if (mode === "url") {
         formData.append("url", url.trim());
       } else if (file) {
-        formData.append("file", file);
+        if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+          setJob({
+            job_id: "uploading",
+            status: "queued",
+            step: `Uploading video (${Math.round(file.size / (1024 * 1024))} MB) to cloud storage...`,
+            progress: 3,
+            logs: ["Uploading video directly to cloud storage (no size/timeout limit)..."],
+            clips: [],
+            error: null,
+          });
+          const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const tempStoragePath = `temp_uploads/${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safeFileName}`;
+          const upRes = await fetch(
+            `${SUPABASE_URL}/storage/v1/object/shorts/${tempStoragePath}`,
+            {
+              method: "POST",
+              headers: {
+                apikey: SUPABASE_ANON_KEY,
+                Authorization: `Bearer ${activeToken || SUPABASE_ANON_KEY}`,
+                "Content-Type": file.type || "video/mp4",
+                "x-upsert": "true",
+              },
+              body: file,
+            }
+          );
+          if (!upRes.ok) {
+            const upErrText = await upRes.text();
+            throw new Error(`Cloud upload failed (${upRes.status}): ${upErrText}`);
+          }
+          formData.append("storage_path", tempStoragePath);
+        } else {
+          formData.append("file", file);
+        }
       }
 
       const headers: Record<string, string> = {};
