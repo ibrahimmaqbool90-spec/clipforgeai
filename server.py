@@ -335,6 +335,53 @@ def delete_temp_vod_from_supabase(storage_path: str | None):
         pass
 
 
+def download_temp_vod_from_supabase(storage_path: str, dest_path: str):
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        raise RuntimeError("Supabase storage is not configured on the server.")
+    encoded = urllib.parse.quote(storage_path, safe="/")
+    req = urllib.request.Request(
+        f"{SUPABASE_URL}/storage/v1/object/shorts/{encoded}",
+        headers={
+            "apikey": SUPABASE_SERVICE_KEY,
+            "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+        },
+        method="GET",
+    )
+    with urllib.request.urlopen(req, timeout=600) as resp, open(dest_path, "wb") as out_f:
+        shutil.copyfileobj(resp, out_f)
+
+
+def delete_temp_vod_from_supabase(storage_path: str | None):
+    if not storage_path or not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return
+    try:
+        encoded = urllib.parse.quote(storage_path, safe="/")
+        _supabase_request(f"/storage/v1/object/shorts/{encoded}", method="DELETE")
+    except Exception:
+        pass
+
+
+def cleanup_orphaned_temp_vods():
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return
+    try:
+        items = _supabase_request(
+            "/storage/v1/object/list/shorts",
+            method="POST",
+            body={"prefix": "temp_uploads", "limit": 100},
+        ) or []
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=2)
+        for item in items:
+            created = item.get("created_at")
+            name = item.get("name")
+            if created and name:
+                dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                if dt < cutoff:
+                    delete_temp_vod_from_supabase(f"temp_uploads/{name}")
+    except Exception:
+        pass
+
+
 def build_social_metadata(clip_obj, transcript_segments: list) -> dict:
     """Builds ready-to-post YouTube Shorts / Reels / TikTok title, description, hashtags, and pinned comment."""
     c_start, c_end, _ = clip_bounds(clip_obj)
@@ -478,6 +525,7 @@ def process_job(
     job_id: str,
     url: str | None,
     uploaded_video: str | None,
+    storage_path: str | None,
     storage_path: str | None,
     num_clips: int,
     dynamic_mode: bool,
@@ -653,6 +701,7 @@ def process_job(
         if not paused_for_confirmation:
             cleanup_temp_files(video_path, audio_path)
             delete_temp_vod_from_supabase(storage_path)
+            delete_temp_vod_from_supabase(storage_path)
 
 
 def worker_loop():
@@ -678,6 +727,7 @@ def worker_loop():
             job_id,
             url,
             uploaded_video,
+            storage_path,
             storage_path,
             num_clips,
             dynamic_mode,
@@ -858,6 +908,7 @@ async def create_clip_job(
         job_id,
         url.strip() or None,
         uploaded_path,
+        storage_path.strip() or None,
         storage_path.strip() or None,
         requested_clips,
         dynamic_mode,
