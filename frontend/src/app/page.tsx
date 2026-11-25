@@ -490,40 +490,39 @@ export default function Home() {
       if (mode === "url") {
         formData.append("url", url.trim());
       } else if (file) {
-        if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+        const CHUNK_SIZE = 5 * 1024 * 1024;
+        const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
+        const uploadId = `up_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+        for (let i = 0; i < totalChunks; i++) {
+          const pct = Math.min(99, Math.round(((i + 1) / totalChunks) * 100));
           setJob({
-            job_id: "uploading",
+            job_id: uploadId,
             status: "queued",
-            step: `Uploading video (${Math.round(file.size / (1024 * 1024))} MB) to cloud storage...`,
-            progress: 3,
-            logs: ["Uploading video directly to cloud storage (no size/timeout limit)..."],
+            step: `Uploading video (${pct}%)...`,
+            progress: Math.max(1, Math.round(pct * 0.05)),
+            logs: [`Uploading chunk ${i + 1}/${totalChunks}...`],
             clips: [],
             error: null,
           });
-          const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-          const tempStoragePath = `temp_uploads/${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safeFileName}`;
-          const upRes = await fetch(
-            `${SUPABASE_URL}/storage/v1/object/shorts/${tempStoragePath}`,
-            {
-              method: "POST",
-              headers: {
-                apikey: SUPABASE_ANON_KEY,
-                Authorization: `Bearer ${activeToken || SUPABASE_ANON_KEY}`,
-                "Content-Type": file.type || "video/mp4",
-                "x-upsert": "true",
-              },
-              body: file,
-            }
-          );
-          if (!upRes.ok) {
-            const upErrText = await upRes.text();
-            throw new Error(`Cloud upload failed (${upRes.status}): ${upErrText}`);
+          const slice = file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+          const chunkForm = new FormData();
+          chunkForm.append("upload_id", uploadId);
+          chunkForm.append("chunk_index", String(i));
+          chunkForm.append("total_chunks", String(totalChunks));
+          chunkForm.append("chunk", slice, file.name);
+
+          const cRes = await fetch(`${API_BASE}/api/upload-chunk`, {
+            method: "POST",
+            body: chunkForm,
+          });
+          if (!cRes.ok) {
+            throw new Error(`Upload failed on part ${i + 1}/${totalChunks}`);
           }
-          formData.append("storage_path", tempStoragePath);
-        } else {
-          formData.append("file", file);
         }
+        formData.append("upload_id", uploadId);
       }
+
 
       const headers: Record<string, string> = {};
       if (activeToken) {
